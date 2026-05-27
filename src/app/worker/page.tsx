@@ -15,10 +15,13 @@ type WorkerMe = {
 type TodayState = {
   date: string;
   serverTime: string;
-  nextAction: "check_in" | "check_out" | "complete";
+  activeShift: "morning" | "afternoon";
+  nextAction: "check_in" | "check_out" | "waiting_afternoon" | "complete";
   record: {
     checkInTime: string | null;
     checkOutTime: string | null;
+    afternoonCheckInTime: string | null;
+    afternoonCheckOutTime: string | null;
     attendanceStatus: string;
   } | null;
 };
@@ -171,6 +174,7 @@ export default function WorkerPage() {
   const statusText = today?.record?.attendanceStatus
     ? attendanceStatusLabels[today.record.attendanceStatus] ?? today.record.attendanceStatus
     : "Sin entrada";
+  const shiftLabel = today?.activeShift === "afternoon" ? "tarde" : "manana";
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-5 text-white">
@@ -229,15 +233,27 @@ export default function WorkerPage() {
                 <strong className="block text-2xl text-slate-950">{statusText}</strong>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <span className="text-slate-500">Entrada</span>
+                    <span className="text-slate-500">Entrada manana</span>
                     <strong className="block text-slate-950">
                       {formatTime(today?.record?.checkInTime)}
                     </strong>
                   </div>
                   <div>
-                    <span className="text-slate-500">Salida</span>
+                    <span className="text-slate-500">Salida manana</span>
                     <strong className="block text-slate-950">
                       {formatTime(today?.record?.checkOutTime)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Entrada tarde</span>
+                    <strong className="block text-slate-950">
+                      {formatTime(today?.record?.afternoonCheckInTime)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Salida tarde</span>
+                    <strong className="block text-slate-950">
+                      {formatTime(today?.record?.afternoonCheckOutTime)}
                     </strong>
                   </div>
                 </div>
@@ -263,7 +279,7 @@ export default function WorkerPage() {
                     className="flex w-full items-center justify-center gap-3 rounded-md bg-emerald-700 px-4 py-5 text-lg font-bold text-white transition hover:bg-emerald-800 disabled:opacity-60"
                   >
                     <Play className="h-6 w-6" aria-hidden="true" />
-                    {marking ? "Obteniendo GPS..." : "Marcar entrada"}
+                    {marking ? "Obteniendo GPS..." : `Marcar entrada ${shiftLabel}`}
                   </button>
                 ) : null}
 
@@ -283,6 +299,13 @@ export default function WorkerPage() {
                   <div className="flex items-center gap-3 rounded-md bg-emerald-50 px-4 py-5 font-bold text-emerald-800">
                     <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
                     Asistencia completa por hoy
+                  </div>
+                ) : null}
+
+                {today?.nextAction === "waiting_afternoon" ? (
+                  <div className="flex items-center gap-3 rounded-md bg-blue-50 px-4 py-5 font-bold text-blue-800">
+                    <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
+                    Turno de la manana completo
                   </div>
                 ) : null}
               </div>

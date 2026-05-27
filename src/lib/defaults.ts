@@ -6,7 +6,15 @@ export const DEFAULT_LOCATION = {
 };
 
 export const DEFAULT_SCHEDULE = {
-  entryTime: "08:00",
-  exitTime: "18:00",
+  entryTime: "09:00",
+  exitTime: "19:00",
+  toleranceMinutes: 10
+};
+
+export const DEFAULT_SHIFT_SCHEDULE = {
+  morningEntryTime: "09:00",
+  morningExitTime: "13:00",
+  afternoonEntryTime: "15:00",
+  afternoonExitTime: "19:00",
   toleranceMinutes: 10
 };

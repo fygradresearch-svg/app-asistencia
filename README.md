@@ -49,7 +49,7 @@ Esto inserta:
 
 - Admin: `admin` / `admin123`
 - Ubicacion: Oficina principal - Alameda Manuel Traverso 391, `-12.048947`, `-75.191307`, radio `50`
-- Horario: entrada `08:00`, salida `18:00`, tolerancia `10`
+- Horario base: manana `09:00` a `13:00`, tarde `15:00` a `19:00`, tolerancia `10`
 - Trabajadores: Juan Perez, Maria Lopez, Carlos Ramos
 
 ## Desarrollo local
@@ -70,14 +70,14 @@ Abre:
 3. Registra trabajadores con nombre completo.
 4. Copia el codigo generado de 4 digitos.
 5. Marca horario personalizado por dias al registrar o editalo despues desde el boton de reloj en la tabla.
-6. Configura entrada, salida y tolerancia para cada trabajador de lunes a viernes.
+6. Configura entrada/salida de manana, entrada/salida de tarde y tolerancia para cada trabajador de lunes a viernes.
 7. Configura ubicacion y horario general si necesitas cambiar los valores iniciales.
 8. Revisa asistencias en `/admin/reports`.
 9. Exporta el reporte desde el boton CSV.
 
 ## Multas por tardanza
 
-Las multas se calculan con la hora de entrada configurada para cada trabajador y dia. Con tolerancia `10`, la regla queda:
+Las multas se calculan con la hora de entrada de cada turno configurada para cada trabajador y dia. Con tolerancia `10`, la regla queda:
 
 - Entrada + 10 a entrada + 20 minutos: `S/. 10.00`
 - Entrada + 21 a entrada + 30 minutos: `S/. 20.00`

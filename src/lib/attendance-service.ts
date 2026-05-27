@@ -6,11 +6,22 @@ import {
   workerDaySchedules,
   type AttemptType
 } from "@/db/schema";
-import { getBusinessDate, getBusinessWeekday } from "@/lib/dates";
+import { getBusinessDate, getBusinessTime, getBusinessWeekday, minutesFromTime } from "@/lib/dates";
 import { getCurrentLocation, getCurrentSchedule } from "@/lib/data";
+import { DEFAULT_SHIFT_SCHEDULE } from "@/lib/defaults";
 import { haversineDistanceMeters } from "@/lib/gps";
 import { evaluateAttendancePenalty } from "@/lib/penalties";
 import { getWorkerFromRequest } from "@/lib/worker-auth";
+
+type ShiftName = "morning" | "afternoon";
+
+type DayShiftSchedule = {
+  morningEntryTime: string;
+  morningExitTime: string;
+  afternoonEntryTime: string;
+  afternoonExitTime: string;
+  toleranceMinutes: number;
+};
 
 type MarkAttendanceInput = {
   request: Request;
@@ -38,7 +49,7 @@ function invalidCoordinates(latitude: number, longitude: number) {
 async function getScheduleForWorker(
   worker: Awaited<ReturnType<typeof getWorkerFromRequest>>,
   date: Date
-) {
+): Promise<DayShiftSchedule | null> {
   if (!worker) {
     return null;
   }
@@ -57,8 +68,11 @@ async function getScheduleForWorker(
 
   if (daySchedule) {
     return {
-      entryTime: daySchedule.entryTime,
-      exitTime: daySchedule.exitTime,
+      morningEntryTime: daySchedule.morningEntryTime ?? daySchedule.entryTime,
+      morningExitTime: daySchedule.morningExitTime ?? DEFAULT_SHIFT_SCHEDULE.morningExitTime,
+      afternoonEntryTime:
+        daySchedule.afternoonEntryTime ?? DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
+      afternoonExitTime: daySchedule.afternoonExitTime ?? daySchedule.exitTime,
       toleranceMinutes: daySchedule.toleranceMinutes
     };
   }
@@ -69,13 +83,65 @@ async function getScheduleForWorker(
     worker.scheduleToleranceMinutes !== null
   ) {
     return {
-      entryTime: worker.scheduleEntryTime,
-      exitTime: worker.scheduleExitTime,
+      morningEntryTime: worker.scheduleEntryTime,
+      morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
+      afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
+      afternoonExitTime: worker.scheduleExitTime,
       toleranceMinutes: worker.scheduleToleranceMinutes
     };
   }
 
-  return getCurrentSchedule();
+  const schedule = await getCurrentSchedule();
+  return {
+    ...DEFAULT_SHIFT_SCHEDULE,
+    toleranceMinutes: schedule?.toleranceMinutes ?? DEFAULT_SHIFT_SCHEDULE.toleranceMinutes
+  };
+}
+
+function getShiftEntryTime(schedule: DayShiftSchedule, shift: ShiftName) {
+  return shift === "morning" ? schedule.morningEntryTime : schedule.afternoonEntryTime;
+}
+
+function getShiftForCheckIn(now: Date, schedule: DayShiftSchedule): ShiftName {
+  const currentMinutes = minutesFromTime(getBusinessTime(now).slice(0, 5));
+  return currentMinutes >= minutesFromTime(schedule.afternoonEntryTime)
+    ? "afternoon"
+    : "morning";
+}
+
+function getShiftForCheckOut(
+  record: typeof attendanceRecords.$inferSelect,
+  now: Date,
+  schedule: DayShiftSchedule
+): ShiftName | null {
+  const currentMinutes = minutesFromTime(getBusinessTime(now).slice(0, 5));
+  const afternoonMinutes = minutesFromTime(schedule.afternoonEntryTime);
+
+  if (record.afternoonCheckInTime && !record.afternoonCheckOutTime) {
+    return "afternoon";
+  }
+
+  if (record.checkInTime && !record.checkOutTime) {
+    return currentMinutes < afternoonMinutes ? "morning" : "morning";
+  }
+
+  return null;
+}
+
+function aggregateStatus(
+  morningStatus: string | null,
+  afternoonStatus: string | null
+) {
+  if (morningStatus === "absent" || afternoonStatus === "absent") {
+    return "absent";
+  }
+  if (morningStatus === "late" || afternoonStatus === "late") {
+    return "late";
+  }
+  if (morningStatus === "punctual" || afternoonStatus === "punctual") {
+    return "punctual";
+  }
+  return "incomplete";
 }
 
 export async function markAttendance({
@@ -138,6 +204,13 @@ export async function markAttendance({
 
   const now = new Date();
   const today = getBusinessDate(now);
+  const schedule = await getScheduleForWorker(worker, now);
+  if (!schedule) {
+    return {
+      status: 400,
+      body: { error: "No existe un horario laboral configurado." }
+    };
+  }
 
   const [existing] = await db
     .select()
@@ -146,18 +219,19 @@ export async function markAttendance({
     .limit(1);
 
   if (type === "check_in") {
-    if (existing?.checkInTime) {
+    const shift = getShiftForCheckIn(now, schedule);
+
+    if (shift === "morning" && existing?.checkInTime) {
       return {
         status: 409,
-        body: { error: "Ya registraste tu entrada de hoy." }
+        body: { error: "Ya registraste tu entrada de la manana." }
       };
     }
 
-    const schedule = await getScheduleForWorker(worker, now);
-    if (!schedule) {
+    if (shift === "afternoon" && existing?.afternoonCheckInTime) {
       return {
-        status: 400,
-        body: { error: "No existe un horario laboral configurado." }
+        status: 409,
+        body: { error: "Ya registraste tu entrada de la tarde." }
       };
     }
 
@@ -171,11 +245,88 @@ export async function markAttendance({
       accepted: true
     });
 
-    const penalty = evaluateAttendancePenalty(
-      now,
-      schedule.entryTime,
-      schedule.toleranceMinutes
-    );
+    const penalty = evaluateAttendancePenalty(now, getShiftEntryTime(schedule, shift), schedule.toleranceMinutes);
+
+    if (shift === "afternoon") {
+      const morningStatus = existing?.checkInTime
+        ? existing.attendanceStatus === "late"
+          ? "late"
+          : "punctual"
+        : "absent";
+      const attendanceStatus = aggregateStatus(morningStatus, penalty.attendanceStatus);
+
+      if (existing) {
+        const [record] = await db
+          .update(attendanceRecords)
+          .set({
+            afternoonCheckInTime: now,
+            afternoonCheckInLatitude: latitude,
+            afternoonCheckInLongitude: longitude,
+            afternoonCheckInDistanceMeters: distanceMeters,
+            afternoonLateMinutes: penalty.lateMinutes,
+            afternoonFineAmountCents: penalty.fineAmountCents,
+            afternoonPenaltyLabel: penalty.penaltyLabel,
+            totalFineAmountCents: existing.fineAmountCents + penalty.fineAmountCents,
+            attendanceStatus,
+            gpsStatus: "valid",
+            updatedAt: now
+          })
+          .where(eq(attendanceRecords.id, existing.id))
+          .returning();
+
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            message:
+              penalty.attendanceStatus === "late"
+                ? `Entrada de la tarde registrada con tardanza. Multa: ${penalty.penaltyLabel}.`
+                : penalty.attendanceStatus === "absent"
+                  ? "Entrada de la tarde registrada como falta."
+                  : "Entrada de la tarde registrada.",
+            record,
+            distanceMeters
+          }
+        };
+      }
+
+      const [record] = await db
+        .insert(attendanceRecords)
+        .values({
+          workerId: worker.id,
+          date: today,
+          afternoonCheckInTime: now,
+          afternoonCheckInLatitude: latitude,
+          afternoonCheckInLongitude: longitude,
+          afternoonCheckInDistanceMeters: distanceMeters,
+          gpsStatus: "valid",
+          attendanceStatus,
+          lateMinutes: 0,
+          fineAmountCents: 0,
+          penaltyLabel: "Falta",
+          afternoonLateMinutes: penalty.lateMinutes,
+          afternoonFineAmountCents: penalty.fineAmountCents,
+          afternoonPenaltyLabel: penalty.penaltyLabel,
+          totalFineAmountCents: penalty.fineAmountCents,
+          updatedAt: now
+        })
+        .returning();
+
+      return {
+        status: 201,
+        body: {
+          ok: true,
+          message:
+            penalty.attendanceStatus === "late"
+              ? `Entrada de la tarde registrada con tardanza. Multa: ${penalty.penaltyLabel}.`
+              : penalty.attendanceStatus === "absent"
+                ? "Entrada de la tarde registrada como falta."
+                : "Entrada de la tarde registrada.",
+          record,
+          distanceMeters
+        }
+      };
+    }
 
     const [record] = await db
       .insert(attendanceRecords)
@@ -191,6 +342,7 @@ export async function markAttendance({
         lateMinutes: penalty.lateMinutes,
         fineAmountCents: penalty.fineAmountCents,
         penaltyLabel: penalty.penaltyLabel,
+        totalFineAmountCents: penalty.fineAmountCents,
         updatedAt: now
       })
       .returning();
@@ -207,24 +359,26 @@ export async function markAttendance({
       status: 201,
       body: {
         ok: true,
-        message: messageByStatus[penalty.attendanceStatus],
+        message: messageByStatus[penalty.attendanceStatus].replace("Entrada", "Entrada de la manana"),
         record,
         distanceMeters
       }
     };
   }
 
-  if (!existing?.checkInTime) {
+  if (!existing) {
     return {
       status: 409,
       body: { error: "No puedes marcar salida sin una entrada previa." }
     };
   }
 
-  if (existing.checkOutTime) {
+  const shift = getShiftForCheckOut(existing, now, schedule);
+
+  if (!shift) {
     return {
       status: 409,
-      body: { error: "Ya registraste tu salida de hoy." }
+      body: { error: "No hay una entrada pendiente de salida." }
     };
   }
 
@@ -238,24 +392,38 @@ export async function markAttendance({
     accepted: true
   });
 
-  const [record] = await db
-    .update(attendanceRecords)
-    .set({
-      checkOutTime: now,
-      checkOutLatitude: latitude,
-      checkOutLongitude: longitude,
-      checkOutDistanceMeters: distanceMeters,
-      gpsStatus: "valid",
-      updatedAt: now
-    })
-    .where(eq(attendanceRecords.id, existing.id))
-    .returning();
+  const [record] =
+    shift === "morning"
+      ? await db
+          .update(attendanceRecords)
+          .set({
+            checkOutTime: now,
+            checkOutLatitude: latitude,
+            checkOutLongitude: longitude,
+            checkOutDistanceMeters: distanceMeters,
+            gpsStatus: "valid",
+            updatedAt: now
+          })
+          .where(eq(attendanceRecords.id, existing.id))
+          .returning()
+      : await db
+          .update(attendanceRecords)
+          .set({
+            afternoonCheckOutTime: now,
+            afternoonCheckOutLatitude: latitude,
+            afternoonCheckOutLongitude: longitude,
+            afternoonCheckOutDistanceMeters: distanceMeters,
+            gpsStatus: "valid",
+            updatedAt: now
+          })
+          .where(eq(attendanceRecords.id, existing.id))
+          .returning();
 
   return {
     status: 200,
     body: {
       ok: true,
-      message: "Salida registrada.",
+      message: shift === "morning" ? "Salida de la manana registrada." : "Salida de la tarde registrada.",
       record,
       distanceMeters
     }

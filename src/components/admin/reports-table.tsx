@@ -15,10 +15,8 @@ type ReportRow = {
   date: string;
   checkInTime: string | null;
   checkOutTime: string | null;
-  checkInLatitude: number | null;
-  checkInLongitude: number | null;
-  checkOutLatitude: number | null;
-  checkOutLongitude: number | null;
+  afternoonCheckInTime: string | null;
+  afternoonCheckOutTime: string | null;
   checkInDistanceMeters: number | null;
   checkOutDistanceMeters: number | null;
   gpsStatus: string;
@@ -26,6 +24,10 @@ type ReportRow = {
   lateMinutes: number;
   fineAmountCents: number;
   penaltyLabel: string;
+  afternoonLateMinutes: number;
+  afternoonFineAmountCents: number;
+  afternoonPenaltyLabel: string;
+  totalFineAmountCents: number;
 };
 
 type Filters = {
@@ -49,19 +51,16 @@ function distance(value: number | null) {
   return value === null || value === undefined ? "-" : `${value.toFixed(2)} m`;
 }
 
-function coordinate(latitude: number | null, longitude: number | null) {
-  if (latitude === null || longitude === null) {
-    return "-";
-  }
-  return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+function moneyLabel(value: number) {
+  return value ? `S/. ${(value / 100).toFixed(2)}` : "S/. 0.00";
 }
 
-function fineLabel(row: ReportRow) {
-  if (row.penaltyLabel) {
-    return row.penaltyLabel;
+function fineLabel(label: string, amount: number) {
+  if (label && label !== "Sin multa") {
+    return label;
   }
 
-  return row.fineAmountCents ? `S/. ${(row.fineAmountCents / 100).toFixed(2)}` : "Sin multa";
+  return amount ? moneyLabel(amount) : "Sin multa";
 }
 
 export function ReportsTable() {
@@ -230,28 +229,29 @@ export function ReportsTable() {
               <tr>
                 <th className="px-4 py-3">Nombre completo</th>
                 <th className="px-4 py-3">Fecha</th>
-                <th className="px-4 py-3">Entrada</th>
-                <th className="px-4 py-3">Salida</th>
+                <th className="px-4 py-3">Entrada manana</th>
+                <th className="px-4 py-3">Salida manana</th>
+                <th className="px-4 py-3">Multa manana</th>
+                <th className="px-4 py-3">Entrada tarde</th>
+                <th className="px-4 py-3">Salida tarde</th>
+                <th className="px-4 py-3">Multa tarde</th>
+                <th className="px-4 py-3">Total multas</th>
                 <th className="px-4 py-3">Asistencia</th>
-                <th className="px-4 py-3">Tardanza</th>
-                <th className="px-4 py-3">Multa</th>
                 <th className="px-4 py-3">GPS</th>
                 <th className="px-4 py-3">Dist. entrada</th>
                 <th className="px-4 py-3">Dist. salida</th>
-                <th className="px-4 py-3">Lat/Lng entrada</th>
-                <th className="px-4 py-3">Lat/Lng salida</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={12}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={13}>
                     Cargando...
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={12}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={13}>
                     No hay registros para los filtros seleccionados.
                   </td>
                 </tr>
@@ -264,12 +264,23 @@ export function ReportsTable() {
                     <td className="px-4 py-3 text-slate-700">{row.date}</td>
                     <td className="px-4 py-3 text-slate-700">{formatTime(row.checkInTime)}</td>
                     <td className="px-4 py-3 text-slate-700">{formatTime(row.checkOutTime)}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-950">
+                      {fineLabel(row.penaltyLabel, row.fineAmountCents)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {formatTime(row.afternoonCheckInTime)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {formatTime(row.afternoonCheckOutTime)}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-950">
+                      {fineLabel(row.afternoonPenaltyLabel, row.afternoonFineAmountCents)}
+                    </td>
+                    <td className="px-4 py-3 font-bold text-slate-950">
+                      {moneyLabel(row.totalFineAmountCents)}
+                    </td>
                     <td className="px-4 py-3">
                       {attendanceStatusLabels[row.attendanceStatus] ?? row.attendanceStatus}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">{row.lateMinutes} min</td>
-                    <td className="px-4 py-3 font-semibold text-slate-950">
-                      {fineLabel(row)}
                     </td>
                     <td className="px-4 py-3">
                       {gpsStatusLabels[row.gpsStatus] ?? row.gpsStatus}
@@ -279,12 +290,6 @@ export function ReportsTable() {
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       {distance(row.checkOutDistanceMeters)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {coordinate(row.checkInLatitude, row.checkInLongitude)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {coordinate(row.checkOutLatitude, row.checkOutLongitude)}
                     </td>
                   </tr>
                 ))

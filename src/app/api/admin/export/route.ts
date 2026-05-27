@@ -25,34 +25,32 @@ export async function GET(request: Request) {
     [
       "Nombre completo",
       "Fecha",
-      "Hora de entrada",
-      "Hora de salida",
+      "Entrada manana",
+      "Salida manana",
+      "Multa manana",
+      "Entrada tarde",
+      "Salida tarde",
+      "Multa tarde",
+      "Total multas",
       "Estado de asistencia",
-      "Minutos tarde",
-      "Multa",
       "Distancia GPS entrada",
       "Distancia GPS salida",
-      "Estado GPS",
-      "Latitud entrada",
-      "Longitud entrada",
-      "Latitud salida",
-      "Longitud salida"
+      "Estado GPS"
     ],
     rows.map((row) => [
       row.workerName,
       row.date,
       formatTimeOnly(row.checkInTime),
       formatTimeOnly(row.checkOutTime),
-      row.attendanceStatus,
-      row.lateMinutes,
       row.penaltyLabel,
+      formatTimeOnly(row.afternoonCheckInTime),
+      formatTimeOnly(row.afternoonCheckOutTime),
+      row.afternoonPenaltyLabel,
+      `S/. ${(row.totalFineAmountCents / 100).toFixed(2)}`,
+      row.attendanceStatus,
       row.checkInDistanceMeters?.toFixed(2),
       row.checkOutDistanceMeters?.toFixed(2),
-      row.gpsStatus,
-      row.checkInLatitude,
-      row.checkInLongitude,
-      row.checkOutLatitude,
-      row.checkOutLongitude
+      row.gpsStatus
     ])
   );
 

@@ -9,6 +9,10 @@ type DayScheduleInput = {
   weekday?: unknown;
   entryTime?: string | null;
   exitTime?: string | null;
+  morningEntryTime?: string | null;
+  morningExitTime?: string | null;
+  afternoonEntryTime?: string | null;
+  afternoonExitTime?: string | null;
   toleranceMinutes?: unknown;
 };
 
@@ -29,8 +33,10 @@ function normalizeDaySchedules(input: DayScheduleInput[] | undefined) {
   return input.map((schedule) => {
     const weekday = parseNumber(schedule.weekday);
     const toleranceMinutes = parseNumber(schedule.toleranceMinutes);
-    const entryTime = schedule.entryTime ?? null;
-    const exitTime = schedule.exitTime ?? null;
+    const morningEntryTime = schedule.morningEntryTime ?? schedule.entryTime ?? null;
+    const morningExitTime = schedule.morningExitTime ?? "13:00";
+    const afternoonEntryTime = schedule.afternoonEntryTime ?? "15:00";
+    const afternoonExitTime = schedule.afternoonExitTime ?? schedule.exitTime ?? null;
 
     if (
       weekday === null ||
@@ -38,8 +44,10 @@ function normalizeDaySchedules(input: DayScheduleInput[] | undefined) {
       weekday > 5 ||
       !Number.isInteger(weekday) ||
       seen.has(weekday) ||
-      !isTimeString(entryTime) ||
-      !isTimeString(exitTime) ||
+      !isTimeString(morningEntryTime) ||
+      !isTimeString(morningExitTime) ||
+      !isTimeString(afternoonEntryTime) ||
+      !isTimeString(afternoonExitTime) ||
       toleranceMinutes === null ||
       toleranceMinutes < 0
     ) {
@@ -49,8 +57,12 @@ function normalizeDaySchedules(input: DayScheduleInput[] | undefined) {
     seen.add(weekday);
     return {
       weekday,
-      entryTime,
-      exitTime,
+      entryTime: morningEntryTime,
+      exitTime: afternoonExitTime,
+      morningEntryTime,
+      morningExitTime,
+      afternoonEntryTime,
+      afternoonExitTime,
       toleranceMinutes: Math.round(toleranceMinutes)
     };
   });

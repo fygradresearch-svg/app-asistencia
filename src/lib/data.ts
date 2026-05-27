@@ -99,6 +99,8 @@ export async function getAttendanceReportRows(filters: AttendanceFilters) {
       date: attendanceRecords.date,
       checkInTime: attendanceRecords.checkInTime,
       checkOutTime: attendanceRecords.checkOutTime,
+      afternoonCheckInTime: attendanceRecords.afternoonCheckInTime,
+      afternoonCheckOutTime: attendanceRecords.afternoonCheckOutTime,
       checkInLatitude: attendanceRecords.checkInLatitude,
       checkInLongitude: attendanceRecords.checkInLongitude,
       checkOutLatitude: attendanceRecords.checkOutLatitude,
@@ -110,6 +112,10 @@ export async function getAttendanceReportRows(filters: AttendanceFilters) {
       lateMinutes: attendanceRecords.lateMinutes,
       fineAmountCents: attendanceRecords.fineAmountCents,
       penaltyLabel: attendanceRecords.penaltyLabel,
+      afternoonLateMinutes: attendanceRecords.afternoonLateMinutes,
+      afternoonFineAmountCents: attendanceRecords.afternoonFineAmountCents,
+      afternoonPenaltyLabel: attendanceRecords.afternoonPenaltyLabel,
+      totalFineAmountCents: attendanceRecords.totalFineAmountCents,
       createdAt: attendanceRecords.createdAt
     })
     .from(attendanceRecords)

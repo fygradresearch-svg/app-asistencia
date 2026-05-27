@@ -20,6 +20,10 @@ type WorkerDaySchedule = {
   weekday: number;
   entryTime: string;
   exitTime: string;
+  morningEntryTime: string | null;
+  morningExitTime: string | null;
+  afternoonEntryTime: string | null;
+  afternoonExitTime: string | null;
   toleranceMinutes: number;
 };
 
@@ -41,8 +45,10 @@ type DayScheduleForm = {
   weekday: number;
   label: string;
   enabled: boolean;
-  entryTime: string;
-  exitTime: string;
+  morningEntryTime: string;
+  morningExitTime: string;
+  afternoonEntryTime: string;
+  afternoonExitTime: string;
   toleranceMinutes: string;
 };
 
@@ -66,8 +72,10 @@ function defaultScheduleForm(enabled = false): WorkerScheduleForm {
       weekday: day.weekday,
       label: day.label,
       enabled,
-      entryTime: "08:00",
-      exitTime: "18:00",
+      morningEntryTime: "09:00",
+      morningExitTime: "13:00",
+      afternoonEntryTime: "15:00",
+      afternoonExitTime: "19:00",
       toleranceMinutes: "10"
     }))
   };
@@ -118,11 +126,14 @@ function scheduleLabel(worker: WorkerRow) {
         (schedule) =>
           schedule.entryTime === daySchedules[0].entryTime &&
           schedule.exitTime === daySchedules[0].exitTime &&
+          schedule.morningExitTime === daySchedules[0].morningExitTime &&
+          schedule.afternoonEntryTime === daySchedules[0].afternoonEntryTime &&
           schedule.toleranceMinutes === daySchedules[0].toleranceMinutes
       );
 
     if (allSame) {
-      return `Lun-Vie ${timeLabel(daySchedules[0].entryTime)} - ${timeLabel(daySchedules[0].exitTime)} (${daySchedules[0].toleranceMinutes} min)`;
+      const schedule = daySchedules[0];
+      return `Lun-Vie ${timeLabel(schedule.morningEntryTime ?? schedule.entryTime)}-${timeLabel(schedule.morningExitTime ?? "13:00")} / ${timeLabel(schedule.afternoonEntryTime ?? "15:00")}-${timeLabel(schedule.afternoonExitTime ?? schedule.exitTime)} (${schedule.toleranceMinutes} min)`;
     }
 
     const labels = daySchedules
@@ -152,8 +163,16 @@ function scheduleFormFromWorker(worker: WorkerRow): WorkerScheduleForm {
         return {
           ...day,
           enabled: Boolean(schedule),
-          entryTime: timeLabel(schedule?.entryTime ?? null) || day.entryTime,
-          exitTime: timeLabel(schedule?.exitTime ?? null) || day.exitTime,
+          morningEntryTime:
+            timeLabel(schedule?.morningEntryTime ?? schedule?.entryTime ?? null) ||
+            day.morningEntryTime,
+          morningExitTime:
+            timeLabel(schedule?.morningExitTime ?? null) || day.morningExitTime,
+          afternoonEntryTime:
+            timeLabel(schedule?.afternoonEntryTime ?? null) || day.afternoonEntryTime,
+          afternoonExitTime:
+            timeLabel(schedule?.afternoonExitTime ?? schedule?.exitTime ?? null) ||
+            day.afternoonExitTime,
           toleranceMinutes: String(schedule?.toleranceMinutes ?? day.toleranceMinutes)
         };
       })
@@ -166,8 +185,10 @@ function scheduleFormFromWorker(worker: WorkerRow): WorkerScheduleForm {
       days: form.days.map((day) => ({
         ...day,
         enabled: true,
-        entryTime: timeLabel(worker.scheduleEntryTime) || day.entryTime,
-        exitTime: timeLabel(worker.scheduleExitTime) || day.exitTime,
+        morningEntryTime: timeLabel(worker.scheduleEntryTime) || day.morningEntryTime,
+        morningExitTime: day.morningExitTime,
+        afternoonEntryTime: day.afternoonEntryTime,
+        afternoonExitTime: timeLabel(worker.scheduleExitTime) || day.afternoonExitTime,
         toleranceMinutes: String(worker.scheduleToleranceMinutes ?? 10)
       }))
     };
@@ -185,8 +206,12 @@ function serializeDaySchedules(form: WorkerScheduleForm) {
     .filter((day) => day.enabled)
     .map((day) => ({
       weekday: day.weekday,
-      entryTime: day.entryTime,
-      exitTime: day.exitTime,
+      entryTime: day.morningEntryTime,
+      exitTime: day.afternoonExitTime,
+      morningEntryTime: day.morningEntryTime,
+      morningExitTime: day.morningExitTime,
+      afternoonEntryTime: day.afternoonEntryTime,
+      afternoonExitTime: day.afternoonExitTime,
       toleranceMinutes: day.toleranceMinutes
     }));
 }
@@ -212,7 +237,7 @@ function ScheduleDaysEditor({
       {form.days.map((day) => (
         <div
           key={day.weekday}
-          className="grid gap-3 rounded-md border border-slate-200 p-3 md:grid-cols-[130px_1fr_1fr_1fr]"
+          className="grid gap-3 rounded-md border border-slate-200 p-3 md:grid-cols-[120px_1fr_1fr_1fr_1fr_1fr]"
         >
           <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <input
@@ -225,24 +250,56 @@ function ScheduleDaysEditor({
           </label>
           <label>
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Entrada
+              Entrada AM
             </span>
             <input
               type="time"
-              value={day.entryTime}
-              onChange={(event) => updateDay(day.weekday, { entryTime: event.target.value })}
+              value={day.morningEntryTime}
+              onChange={(event) =>
+                updateDay(day.weekday, { morningEntryTime: event.target.value })
+              }
               disabled={!day.enabled}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-400"
             />
           </label>
           <label>
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Salida
+              Salida AM
             </span>
             <input
               type="time"
-              value={day.exitTime}
-              onChange={(event) => updateDay(day.weekday, { exitTime: event.target.value })}
+              value={day.morningExitTime}
+              onChange={(event) =>
+                updateDay(day.weekday, { morningExitTime: event.target.value })
+              }
+              disabled={!day.enabled}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-400"
+            />
+          </label>
+          <label>
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Entrada PM
+            </span>
+            <input
+              type="time"
+              value={day.afternoonEntryTime}
+              onChange={(event) =>
+                updateDay(day.weekday, { afternoonEntryTime: event.target.value })
+              }
+              disabled={!day.enabled}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-400"
+            />
+          </label>
+          <label>
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Salida PM
+            </span>
+            <input
+              type="time"
+              value={day.afternoonExitTime}
+              onChange={(event) =>
+                updateDay(day.weekday, { afternoonExitTime: event.target.value })
+              }
               disabled={!day.enabled}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-400"
             />
