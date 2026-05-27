@@ -112,6 +112,9 @@ export const attendanceRecords = pgTable(
     checkOutDistanceMeters: doublePrecision("check_out_distance_meters"),
     gpsStatus: gpsStatusEnum("gps_status").default("valid").notNull(),
     attendanceStatus: attendanceStatusEnum("attendance_status").notNull(),
+    lateMinutes: integer("late_minutes").default(0).notNull(),
+    fineAmountCents: integer("fine_amount_cents").default(0).notNull(),
+    penaltyLabel: varchar("penalty_label", { length: 40 }).default("Sin multa").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
   },

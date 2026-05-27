@@ -23,6 +23,9 @@ type ReportRow = {
   checkOutDistanceMeters: number | null;
   gpsStatus: string;
   attendanceStatus: string;
+  lateMinutes: number;
+  fineAmountCents: number;
+  penaltyLabel: string;
 };
 
 type Filters = {
@@ -51,6 +54,14 @@ function coordinate(latitude: number | null, longitude: number | null) {
     return "-";
   }
   return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+}
+
+function fineLabel(row: ReportRow) {
+  if (row.penaltyLabel) {
+    return row.penaltyLabel;
+  }
+
+  return row.fineAmountCents ? `S/. ${(row.fineAmountCents / 100).toFixed(2)}` : "Sin multa";
 }
 
 export function ReportsTable() {
@@ -214,7 +225,7 @@ export function ReportsTable() {
 
       <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-[1120px] w-full text-left text-sm">
+          <table className="min-w-[1280px] w-full text-left text-sm">
             <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
               <tr>
                 <th className="px-4 py-3">Nombre completo</th>
@@ -222,6 +233,8 @@ export function ReportsTable() {
                 <th className="px-4 py-3">Entrada</th>
                 <th className="px-4 py-3">Salida</th>
                 <th className="px-4 py-3">Asistencia</th>
+                <th className="px-4 py-3">Tardanza</th>
+                <th className="px-4 py-3">Multa</th>
                 <th className="px-4 py-3">GPS</th>
                 <th className="px-4 py-3">Dist. entrada</th>
                 <th className="px-4 py-3">Dist. salida</th>
@@ -232,13 +245,13 @@ export function ReportsTable() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={10}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={12}>
                     Cargando...
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={10}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={12}>
                     No hay registros para los filtros seleccionados.
                   </td>
                 </tr>
@@ -253,6 +266,10 @@ export function ReportsTable() {
                     <td className="px-4 py-3 text-slate-700">{formatTime(row.checkOutTime)}</td>
                     <td className="px-4 py-3">
                       {attendanceStatusLabels[row.attendanceStatus] ?? row.attendanceStatus}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{row.lateMinutes} min</td>
+                    <td className="px-4 py-3 font-semibold text-slate-950">
+                      {fineLabel(row)}
                     </td>
                     <td className="px-4 py-3">
                       {gpsStatusLabels[row.gpsStatus] ?? row.gpsStatus}

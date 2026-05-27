@@ -107,6 +107,9 @@ export async function getAttendanceReportRows(filters: AttendanceFilters) {
       checkOutDistanceMeters: attendanceRecords.checkOutDistanceMeters,
       gpsStatus: attendanceRecords.gpsStatus,
       attendanceStatus: attendanceRecords.attendanceStatus,
+      lateMinutes: attendanceRecords.lateMinutes,
+      fineAmountCents: attendanceRecords.fineAmountCents,
+      penaltyLabel: attendanceRecords.penaltyLabel,
       createdAt: attendanceRecords.createdAt
     })
     .from(attendanceRecords)

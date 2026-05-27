@@ -12,7 +12,7 @@ export const codeUsedLabels: Record<string, string> = {
 export const attendanceStatusLabels: Record<string, string> = {
   punctual: "Puntual",
   late: "Tardanza",
-  absent: "Ausente",
+  absent: "Falta",
   incomplete: "Incompleta",
   rejected_gps: "GPS rechazado"
 };

@@ -75,6 +75,14 @@ Abre:
 8. Revisa asistencias en `/admin/reports`.
 9. Exporta el reporte desde el boton CSV.
 
+## Multas por tardanza
+
+Las multas se calculan con la hora de entrada configurada para cada trabajador y dia. Con tolerancia `10`, la regla queda:
+
+- Entrada + 10 a entrada + 20 minutos: `S/. 10.00`
+- Entrada + 21 a entrada + 30 minutos: `S/. 20.00`
+- Entrada + 31 minutos o mas: `Falta`
+
 ## Flujo trabajador
 
 1. Entra a `/worker` desde el celular.

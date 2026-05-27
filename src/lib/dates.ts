@@ -47,6 +47,11 @@ export function isLateForSchedule(now: Date, entryTime: string, toleranceMinutes
   return minutesFromTime(current) > minutesFromTime(entryTime) + toleranceMinutes;
 }
 
+export function minutesAfterEntry(now: Date, entryTime: string) {
+  const current = getBusinessTime(now).slice(0, 5);
+  return minutesFromTime(current) - minutesFromTime(entryTime);
+}
+
 export function formatDateTime(value: Date | string | null) {
   if (!value) {
     return "";

@@ -6,9 +6,10 @@ import {
   workerDaySchedules,
   type AttemptType
 } from "@/db/schema";
-import { getBusinessDate, getBusinessWeekday, isLateForSchedule } from "@/lib/dates";
+import { getBusinessDate, getBusinessWeekday } from "@/lib/dates";
 import { getCurrentLocation, getCurrentSchedule } from "@/lib/data";
 import { haversineDistanceMeters } from "@/lib/gps";
+import { evaluateAttendancePenalty } from "@/lib/penalties";
 import { getWorkerFromRequest } from "@/lib/worker-auth";
 
 type MarkAttendanceInput = {
@@ -170,13 +171,11 @@ export async function markAttendance({
       accepted: true
     });
 
-    const attendanceStatus = isLateForSchedule(
+    const penalty = evaluateAttendancePenalty(
       now,
       schedule.entryTime,
       schedule.toleranceMinutes
-    )
-      ? "late"
-      : "punctual";
+    );
 
     const [record] = await db
       .insert(attendanceRecords)
@@ -188,16 +187,27 @@ export async function markAttendance({
         checkInLongitude: longitude,
         checkInDistanceMeters: distanceMeters,
         gpsStatus: "valid",
-        attendanceStatus,
+        attendanceStatus: penalty.attendanceStatus,
+        lateMinutes: penalty.lateMinutes,
+        fineAmountCents: penalty.fineAmountCents,
+        penaltyLabel: penalty.penaltyLabel,
         updatedAt: now
       })
       .returning();
+
+    const messageByStatus = {
+      punctual: "Entrada registrada.",
+      late: `Entrada registrada con tardanza. Multa: ${penalty.penaltyLabel}.`,
+      absent: "Entrada registrada como falta.",
+      incomplete: "Entrada registrada.",
+      rejected_gps: "Entrada registrada."
+    };
 
     return {
       status: 201,
       body: {
         ok: true,
-        message: attendanceStatus === "late" ? "Entrada registrada con tardanza." : "Entrada registrada.",
+        message: messageByStatus[penalty.attendanceStatus],
         record,
         distanceMeters
       }
