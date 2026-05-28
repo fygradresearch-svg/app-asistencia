@@ -8,6 +8,13 @@ export type AttendancePenalty = {
   penaltyLabel: string;
 };
 
+export const ABSENCE_PENALTY: AttendancePenalty = {
+  attendanceStatus: "absent",
+  lateMinutes: 0,
+  fineAmountCents: 4000,
+  penaltyLabel: "Falta - S/. 40.00"
+};
+
 export function evaluateAttendancePenalty(
   now: Date,
   entryTime: string,
@@ -44,10 +51,8 @@ export function evaluateAttendancePenalty(
   }
 
   return {
-    attendanceStatus: "absent",
-    lateMinutes,
-    fineAmountCents: 4000,
-    penaltyLabel: "Falta - S/. 40.00"
+    ...ABSENCE_PENALTY,
+    lateMinutes
   };
 }
 

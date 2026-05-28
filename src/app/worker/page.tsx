@@ -15,8 +15,8 @@ type WorkerMe = {
 type TodayState = {
   date: string;
   serverTime: string;
-  activeShift: "morning" | "afternoon";
-  nextAction: "check_in" | "check_out" | "waiting_afternoon" | "complete";
+  activeShift: "morning" | "afternoon" | null;
+  nextAction: "check_in" | "check_out" | "waiting_afternoon" | "complete" | "no_schedule";
   record: {
     checkInTime: string | null;
     checkOutTime: string | null;
@@ -306,6 +306,13 @@ export default function WorkerPage() {
                   <div className="flex items-center gap-3 rounded-md bg-blue-50 px-4 py-5 font-bold text-blue-800">
                     <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
                     Turno de la manana completo
+                  </div>
+                ) : null}
+
+                {today?.nextAction === "no_schedule" ? (
+                  <div className="flex items-center gap-3 rounded-md bg-amber-50 px-4 py-5 font-bold text-amber-800">
+                    <Clock className="h-6 w-6" aria-hidden="true" />
+                    No tienes turno asignado para hoy
                   </div>
                 ) : null}
               </div>

@@ -3,25 +3,21 @@ import { db } from "@/db";
 import {
   attendanceAttempts,
   attendanceRecords,
-  workerDaySchedules,
   type AttemptType
 } from "@/db/schema";
-import { getBusinessDate, getBusinessTime, getBusinessWeekday, minutesFromTime } from "@/lib/dates";
-import { getCurrentLocation, getCurrentSchedule } from "@/lib/data";
-import { DEFAULT_SHIFT_SCHEDULE } from "@/lib/defaults";
+import { getBusinessDate } from "@/lib/dates";
+import { getCurrentLocation } from "@/lib/data";
 import { haversineDistanceMeters } from "@/lib/gps";
-import { evaluateAttendancePenalty } from "@/lib/penalties";
+import { ABSENCE_PENALTY, evaluateAttendancePenalty } from "@/lib/penalties";
 import { getWorkerFromRequest } from "@/lib/worker-auth";
-
-type ShiftName = "morning" | "afternoon";
-
-type DayShiftSchedule = {
-  morningEntryTime: string;
-  morningExitTime: string;
-  afternoonEntryTime: string;
-  afternoonExitTime: string;
-  toleranceMinutes: number;
-};
+import {
+  getScheduleForWorker,
+  getShiftEntryTime,
+  getShiftForCheckIn,
+  hasShift,
+  type DayShiftSchedule,
+  type ShiftName
+} from "@/lib/worker-schedules";
 
 type MarkAttendanceInput = {
   request: Request;
@@ -46,83 +42,20 @@ function invalidCoordinates(latitude: number, longitude: number) {
   );
 }
 
-async function getScheduleForWorker(
-  worker: Awaited<ReturnType<typeof getWorkerFromRequest>>,
-  date: Date
-): Promise<DayShiftSchedule | null> {
-  if (!worker) {
-    return null;
-  }
-
-  const weekday = getBusinessWeekday(date);
-  const [daySchedule] = await db
-    .select()
-    .from(workerDaySchedules)
-    .where(
-      and(
-        eq(workerDaySchedules.workerId, worker.id),
-        eq(workerDaySchedules.weekday, weekday)
-      )
-    )
-    .limit(1);
-
-  if (daySchedule) {
-    return {
-      morningEntryTime: daySchedule.morningEntryTime ?? daySchedule.entryTime,
-      morningExitTime: daySchedule.morningExitTime ?? DEFAULT_SHIFT_SCHEDULE.morningExitTime,
-      afternoonEntryTime:
-        daySchedule.afternoonEntryTime ?? DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
-      afternoonExitTime: daySchedule.afternoonExitTime ?? daySchedule.exitTime,
-      toleranceMinutes: daySchedule.toleranceMinutes
-    };
-  }
-
-  if (
-    worker.scheduleEntryTime &&
-    worker.scheduleExitTime &&
-    worker.scheduleToleranceMinutes !== null
-  ) {
-    return {
-      morningEntryTime: worker.scheduleEntryTime,
-      morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
-      afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
-      afternoonExitTime: worker.scheduleExitTime,
-      toleranceMinutes: worker.scheduleToleranceMinutes
-    };
-  }
-
-  const schedule = await getCurrentSchedule();
-  return {
-    ...DEFAULT_SHIFT_SCHEDULE,
-    toleranceMinutes: schedule?.toleranceMinutes ?? DEFAULT_SHIFT_SCHEDULE.toleranceMinutes
-  };
-}
-
-function getShiftEntryTime(schedule: DayShiftSchedule, shift: ShiftName) {
-  return shift === "morning" ? schedule.morningEntryTime : schedule.afternoonEntryTime;
-}
-
-function getShiftForCheckIn(now: Date, schedule: DayShiftSchedule): ShiftName {
-  const currentMinutes = minutesFromTime(getBusinessTime(now).slice(0, 5));
-  return currentMinutes >= minutesFromTime(schedule.afternoonEntryTime)
-    ? "afternoon"
-    : "morning";
-}
-
 function getShiftForCheckOut(
   record: typeof attendanceRecords.$inferSelect,
-  now: Date,
   schedule: DayShiftSchedule
 ): ShiftName | null {
-  const currentMinutes = minutesFromTime(getBusinessTime(now).slice(0, 5));
-  const afternoonMinutes = minutesFromTime(schedule.afternoonEntryTime);
-
-  if (record.afternoonCheckInTime && !record.afternoonCheckOutTime) {
+  if (
+    hasShift(schedule, "afternoon") &&
+    record.afternoonCheckInTime &&
+    !record.afternoonCheckOutTime
+  ) {
     return "afternoon";
   }
 
-  if (record.checkInTime && !record.checkOutTime) {
-    return currentMinutes < afternoonMinutes ? "morning" : "morning";
+  if (hasShift(schedule, "morning") && record.checkInTime && !record.checkOutTime) {
+    return "morning";
   }
 
   return null;
@@ -205,10 +138,10 @@ export async function markAttendance({
   const now = new Date();
   const today = getBusinessDate(now);
   const schedule = await getScheduleForWorker(worker, now);
-  if (!schedule) {
+  if (!schedule || (!hasShift(schedule, "morning") && !hasShift(schedule, "afternoon"))) {
     return {
       status: 400,
-      body: { error: "No existe un horario laboral configurado." }
+      body: { error: "No tienes un turno configurado para hoy." }
     };
   }
 
@@ -220,6 +153,14 @@ export async function markAttendance({
 
   if (type === "check_in") {
     const shift = getShiftForCheckIn(now, schedule);
+    const shiftEntryTime = shift ? getShiftEntryTime(schedule, shift) : null;
+
+    if (!shift || !shiftEntryTime) {
+      return {
+        status: 400,
+        body: { error: "No tienes un turno configurado para hoy." }
+      };
+    }
 
     if (shift === "morning" && existing?.checkInTime) {
       return {
@@ -245,20 +186,33 @@ export async function markAttendance({
       accepted: true
     });
 
-    const penalty = evaluateAttendancePenalty(now, getShiftEntryTime(schedule, shift), schedule.toleranceMinutes);
+    const penalty = evaluateAttendancePenalty(now, shiftEntryTime, schedule.toleranceMinutes);
 
     if (shift === "afternoon") {
-      const morningStatus = existing?.checkInTime
-        ? existing.attendanceStatus === "late"
-          ? "late"
-          : "punctual"
-        : "absent";
+      const morningStatus = hasShift(schedule, "morning")
+        ? existing?.checkInTime
+          ? existing.attendanceStatus === "late" || existing.fineAmountCents > 0
+            ? "late"
+            : "punctual"
+          : ABSENCE_PENALTY.attendanceStatus
+        : null;
       const attendanceStatus = aggregateStatus(morningStatus, penalty.attendanceStatus);
 
       if (existing) {
+        const morningFine = existing.checkInTime
+          ? existing.fineAmountCents
+          : hasShift(schedule, "morning")
+            ? ABSENCE_PENALTY.fineAmountCents
+            : 0;
         const [record] = await db
           .update(attendanceRecords)
           .set({
+            ...(existing.checkInTime || !hasShift(schedule, "morning")
+              ? {}
+              : {
+                  fineAmountCents: ABSENCE_PENALTY.fineAmountCents,
+                  penaltyLabel: ABSENCE_PENALTY.penaltyLabel
+                }),
             afternoonCheckInTime: now,
             afternoonCheckInLatitude: latitude,
             afternoonCheckInLongitude: longitude,
@@ -266,7 +220,7 @@ export async function markAttendance({
             afternoonLateMinutes: penalty.lateMinutes,
             afternoonFineAmountCents: penalty.fineAmountCents,
             afternoonPenaltyLabel: penalty.penaltyLabel,
-            totalFineAmountCents: existing.fineAmountCents + penalty.fineAmountCents,
+            totalFineAmountCents: morningFine + penalty.fineAmountCents,
             attendanceStatus,
             gpsStatus: "valid",
             updatedAt: now
@@ -302,12 +256,18 @@ export async function markAttendance({
           gpsStatus: "valid",
           attendanceStatus,
           lateMinutes: 0,
-          fineAmountCents: 0,
-          penaltyLabel: "Falta",
+          fineAmountCents: hasShift(schedule, "morning")
+            ? ABSENCE_PENALTY.fineAmountCents
+            : 0,
+          penaltyLabel: hasShift(schedule, "morning")
+            ? ABSENCE_PENALTY.penaltyLabel
+            : "Sin multa",
           afternoonLateMinutes: penalty.lateMinutes,
           afternoonFineAmountCents: penalty.fineAmountCents,
           afternoonPenaltyLabel: penalty.penaltyLabel,
-          totalFineAmountCents: penalty.fineAmountCents,
+          totalFineAmountCents:
+            (hasShift(schedule, "morning") ? ABSENCE_PENALTY.fineAmountCents : 0) +
+            penalty.fineAmountCents,
           updatedAt: now
         })
         .returning();
@@ -373,7 +333,7 @@ export async function markAttendance({
     };
   }
 
-  const shift = getShiftForCheckOut(existing, now, schedule);
+  const shift = getShiftForCheckOut(existing, schedule);
 
   if (!shift) {
     return {

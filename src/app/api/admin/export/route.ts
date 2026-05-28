@@ -2,7 +2,47 @@ import { requireAdminSession } from "@/lib/auth";
 import { getAttendanceReportRows } from "@/lib/data";
 import { formatTimeOnly } from "@/lib/dates";
 import { jsonError } from "@/lib/http";
-import { toCsv } from "@/lib/csv";
+
+type CellValue = string | number | null | undefined;
+
+function escapeHtml(value: CellValue) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function toXls(headers: string[], rows: CellValue[][]) {
+  const head = headers
+    .map((header) => `<th>${escapeHtml(header)}</th>`)
+    .join("");
+  const body = rows
+    .map(
+      (row) =>
+        `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`
+    )
+    .join("");
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+      th { background: #e2e8f0; font-weight: bold; }
+      th, td { border: 1px solid #94a3b8; padding: 6px 8px; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <table>
+      <thead><tr>${head}</tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+  </body>
+</html>`;
+}
 
 export async function GET(request: Request) {
   const session = await requireAdminSession();
@@ -21,7 +61,7 @@ export async function GET(request: Request) {
     workerId: Number.isInteger(workerId) ? workerId : null
   });
 
-  const csv = toCsv(
+  const xls = toXls(
     [
       "Nombre completo",
       "Fecha",
@@ -33,8 +73,6 @@ export async function GET(request: Request) {
       "Multa tarde",
       "Total multas",
       "Estado de asistencia",
-      "Distancia GPS entrada",
-      "Distancia GPS salida",
       "Estado GPS"
     ],
     rows.map((row) => [
@@ -48,16 +86,14 @@ export async function GET(request: Request) {
       row.afternoonPenaltyLabel,
       `S/. ${(row.totalFineAmountCents / 100).toFixed(2)}`,
       row.attendanceStatus,
-      row.checkInDistanceMeters?.toFixed(2),
-      row.checkOutDistanceMeters?.toFixed(2),
       row.gpsStatus
     ])
   );
 
-  return new Response(csv, {
+  return new Response(xls, {
     headers: {
-      "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="reporte-asistencia.csv"`
+      "content-type": "application/vnd.ms-excel; charset=utf-8",
+      "content-disposition": `attachment; filename="reporte-asistencia.xls"`
     }
   });
 }

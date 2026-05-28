@@ -5,17 +5,7 @@ import { workerDaySchedules, workers } from "@/db/schema";
 import { requireAdminSession } from "@/lib/auth";
 import { generateUniqueActivationCode } from "@/lib/activation-code";
 import { isTimeString, jsonError, parseNumber } from "@/lib/http";
-
-type DayScheduleInput = {
-  weekday?: unknown;
-  entryTime?: string | null;
-  exitTime?: string | null;
-  morningEntryTime?: string | null;
-  morningExitTime?: string | null;
-  afternoonEntryTime?: string | null;
-  afternoonExitTime?: string | null;
-  toleranceMinutes?: unknown;
-};
+import { normalizeDaySchedules, type DayScheduleInput } from "@/lib/schedule-input";
 
 type CreateWorkerBody = {
   fullName?: string;
@@ -24,50 +14,6 @@ type CreateWorkerBody = {
   scheduleToleranceMinutes?: unknown;
   daySchedules?: DayScheduleInput[];
 };
-
-function normalizeDaySchedules(input: DayScheduleInput[] | undefined) {
-  if (!input?.length) {
-    return [];
-  }
-
-  const seen = new Set<number>();
-  return input.map((schedule) => {
-    const weekday = parseNumber(schedule.weekday);
-    const toleranceMinutes = parseNumber(schedule.toleranceMinutes);
-    const morningEntryTime = schedule.morningEntryTime ?? schedule.entryTime ?? null;
-    const morningExitTime = schedule.morningExitTime ?? "13:00";
-    const afternoonEntryTime = schedule.afternoonEntryTime ?? "15:00";
-    const afternoonExitTime = schedule.afternoonExitTime ?? schedule.exitTime ?? null;
-
-    if (
-      weekday === null ||
-      weekday < 1 ||
-      weekday > 5 ||
-      !Number.isInteger(weekday) ||
-      seen.has(weekday) ||
-      !isTimeString(morningEntryTime) ||
-      !isTimeString(morningExitTime) ||
-      !isTimeString(afternoonEntryTime) ||
-      !isTimeString(afternoonExitTime) ||
-      toleranceMinutes === null ||
-      toleranceMinutes < 0
-    ) {
-      throw new Error("Horario por dia invalido.");
-    }
-
-    seen.add(weekday);
-    return {
-      weekday,
-      entryTime: morningEntryTime,
-      exitTime: afternoonExitTime,
-      morningEntryTime,
-      morningExitTime,
-      afternoonEntryTime,
-      afternoonExitTime,
-      toleranceMinutes: Math.round(toleranceMinutes)
-    };
-  });
-}
 
 export async function GET() {
   const session = await requireAdminSession();

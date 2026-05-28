@@ -2,17 +2,22 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { Clock, Save } from "lucide-react";
+import { DEFAULT_SHIFT_SCHEDULE } from "@/lib/defaults";
 
 type ScheduleFormState = {
-  entryTime: string;
-  exitTime: string;
+  morningEntryTime: string;
+  morningExitTime: string;
+  afternoonEntryTime: string;
+  afternoonExitTime: string;
   toleranceMinutes: string;
 };
 
 export function ScheduleForm() {
   const [form, setForm] = useState<ScheduleFormState>({
-    entryTime: "",
-    exitTime: "",
+    morningEntryTime: "",
+    morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
+    afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
+    afternoonExitTime: "",
     toleranceMinutes: ""
   });
   const [loading, setLoading] = useState(true);
@@ -28,8 +33,12 @@ export function ScheduleForm() {
 
       if (response.ok) {
         setForm({
-          entryTime: data.entryTime?.slice(0, 5) ?? "",
-          exitTime: data.exitTime?.slice(0, 5) ?? "",
+          morningEntryTime:
+            data.entryTime?.slice(0, 5) ?? DEFAULT_SHIFT_SCHEDULE.morningEntryTime,
+          morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
+          afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
+          afternoonExitTime:
+            data.exitTime?.slice(0, 5) ?? DEFAULT_SHIFT_SCHEDULE.afternoonExitTime,
           toleranceMinutes: String(data.toleranceMinutes ?? "")
         });
       } else {
@@ -53,7 +62,11 @@ export function ScheduleForm() {
     const response = await fetch("/api/admin/schedule", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(form)
+      body: JSON.stringify({
+        entryTime: form.morningEntryTime,
+        exitTime: form.afternoonExitTime,
+        toleranceMinutes: form.toleranceMinutes
+      })
     });
     const data = await response.json().catch(() => ({}));
     setSaving(false);
@@ -64,8 +77,12 @@ export function ScheduleForm() {
     }
 
     setForm({
-      entryTime: data.entryTime?.slice(0, 5) ?? "",
-      exitTime: data.exitTime?.slice(0, 5) ?? "",
+      morningEntryTime:
+        data.entryTime?.slice(0, 5) ?? DEFAULT_SHIFT_SCHEDULE.morningEntryTime,
+      morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
+      afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
+      afternoonExitTime:
+        data.exitTime?.slice(0, 5) ?? DEFAULT_SHIFT_SCHEDULE.afternoonExitTime,
       toleranceMinutes: String(data.toleranceMinutes ?? "")
     });
     setMessage("Horario guardado.");
@@ -87,30 +104,50 @@ export function ScheduleForm() {
           </span>
           <div>
             <h2 className="text-lg font-bold text-slate-950">Jornada</h2>
-            <p className="text-sm text-slate-500">Horas en formato de 24 horas</p>
+            <p className="text-sm text-slate-500">Horario general con turno manana y tarde</p>
           </div>
         </div>
 
         {loading ? (
           <p className="text-sm text-slate-500">Cargando...</p>
         ) : (
-          <form onSubmit={submit} className="grid gap-4 md:grid-cols-3">
+          <form onSubmit={submit} className="grid gap-4 md:grid-cols-5">
             <label>
-              <span className="text-sm font-medium text-slate-700">Hora de entrada</span>
+              <span className="text-sm font-medium text-slate-700">Entrada manana</span>
               <input
                 type="time"
-                value={form.entryTime}
-                onChange={(event) => updateField("entryTime", event.target.value)}
+                value={form.morningEntryTime}
+                onChange={(event) => updateField("morningEntryTime", event.target.value)}
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
             </label>
 
             <label>
-              <span className="text-sm font-medium text-slate-700">Hora de salida</span>
+              <span className="text-sm font-medium text-slate-700">Salida manana</span>
               <input
                 type="time"
-                value={form.exitTime}
-                onChange={(event) => updateField("exitTime", event.target.value)}
+                value={form.morningExitTime}
+                disabled
+                className="mt-1 w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-slate-500 outline-none"
+              />
+            </label>
+
+            <label>
+              <span className="text-sm font-medium text-slate-700">Entrada tarde</span>
+              <input
+                type="time"
+                value={form.afternoonEntryTime}
+                disabled
+                className="mt-1 w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-slate-500 outline-none"
+              />
+            </label>
+
+            <label>
+              <span className="text-sm font-medium text-slate-700">Salida tarde</span>
+              <input
+                type="time"
+                value={form.afternoonExitTime}
+                onChange={(event) => updateField("afternoonExitTime", event.target.value)}
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
             </label>
@@ -125,7 +162,7 @@ export function ScheduleForm() {
               />
             </label>
 
-            <div className="md:col-span-3">
+            <div className="md:col-span-5">
               <button
                 type="submit"
                 disabled={saving}

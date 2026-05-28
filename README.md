@@ -70,10 +70,10 @@ Abre:
 3. Registra trabajadores con nombre completo.
 4. Copia el codigo generado de 4 digitos.
 5. Marca horario personalizado por dias al registrar o editalo despues desde el boton de reloj en la tabla.
-6. Configura entrada/salida de manana, entrada/salida de tarde y tolerancia para cada trabajador de lunes a viernes.
+6. Configura turnos de manana y/o tarde para cada trabajador de lunes a viernes. Puedes dejar solo un turno activo o usar horarios como `09:00-11:00` y `15:00-17:00`.
 7. Configura ubicacion y horario general si necesitas cambiar los valores iniciales.
 8. Revisa asistencias en `/admin/reports`.
-9. Exporta el reporte desde el boton CSV.
+9. Exporta el reporte desde el boton XLS.
 
 ## Multas por tardanza
 
@@ -81,7 +81,7 @@ Las multas se calculan con la hora de entrada de cada turno configurada para cad
 
 - Entrada + 10 a entrada + 20 minutos: `S/. 10.00`
 - Entrada + 21 a entrada + 30 minutos: `S/. 20.00`
-- Entrada + 31 minutos o mas: `Falta`
+- Entrada + 31 minutos o mas: `Falta - S/. 40.00`
 
 ## Flujo trabajador
 
