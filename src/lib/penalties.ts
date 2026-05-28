@@ -46,8 +46,8 @@ export function evaluateAttendancePenalty(
   return {
     attendanceStatus: "absent",
     lateMinutes,
-    fineAmountCents: 0,
-    penaltyLabel: "Falta"
+    fineAmountCents: 4000,
+    penaltyLabel: "Falta - S/. 40.00"
   };
 }
 
