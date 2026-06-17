@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Download, Filter, RefreshCw } from "lucide-react";
-import { attendanceStatusLabels, gpsStatusLabels } from "@/lib/labels";
+import { attendanceStatusLabels, shiftTypeLabels } from "@/lib/labels";
 
 type WorkerOption = {
   id: number;
@@ -12,20 +12,24 @@ type WorkerOption = {
 type ReportRow = {
   id: number;
   workerName: string;
+  workerDni: string;
   date: string;
-  checkInTime: string | null;
+  shiftType: "morning" | "afternoon";
+  serverTime: string;
   checkOutTime: string | null;
-  afternoonCheckInTime: string | null;
-  afternoonCheckOutTime: string | null;
-  gpsStatus: string;
-  attendanceStatus: string;
+  status: string;
   lateMinutes: number;
   fineAmountCents: number;
-  penaltyLabel: string;
-  afternoonLateMinutes: number;
-  afternoonFineAmountCents: number;
-  afternoonPenaltyLabel: string;
-  totalFineAmountCents: number;
+  toleranceUsed: boolean;
+};
+
+type WorkerTotals = {
+  workerId: number;
+  workerName: string;
+  workerDni: string;
+  totalLate: number;
+  totalAbsent: number;
+  totalFinesCents: number;
 };
 
 type Filters = {
@@ -49,17 +53,10 @@ function moneyLabel(value: number) {
   return value ? `S/. ${(value / 100).toFixed(2)}` : "S/. 0.00";
 }
 
-function fineLabel(label: string, amount: number) {
-  if (label && label !== "Sin multa") {
-    return label;
-  }
-
-  return amount ? moneyLabel(amount) : "Sin multa";
-}
-
 export function ReportsTable() {
   const [workers, setWorkers] = useState<WorkerOption[]>([]);
   const [rows, setRows] = useState<ReportRow[]>([]);
+  const [totals, setTotals] = useState<WorkerTotals[]>([]);
   const [filters, setFilters] = useState<Filters>({
     date: "",
     from: "",
@@ -83,7 +80,7 @@ export function ReportsTable() {
     setLoading(true);
     setError("");
     const response = await fetch(`/api/admin/attendance${nextQuery ? `?${nextQuery}` : ""}`);
-    const data = await response.json().catch(() => []);
+    const data = await response.json().catch(() => ({}));
     setLoading(false);
 
     if (!response.ok) {
@@ -91,7 +88,8 @@ export function ReportsTable() {
       return;
     }
 
-    setRows(data);
+    setRows(data.rows ?? []);
+    setTotals(data.totals ?? []);
   }
 
   useEffect(() => {
@@ -216,34 +214,33 @@ export function ReportsTable() {
         </p>
       ) : null}
 
-      <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+      <section className="mb-6 overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-[1120px] w-full text-left text-sm">
+          <table className="min-w-[1200px] w-full text-left text-sm">
             <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
               <tr>
                 <th className="px-4 py-3">Nombre completo</th>
+                <th className="px-4 py-3">DNI</th>
                 <th className="px-4 py-3">Fecha</th>
-                <th className="px-4 py-3">Entrada manana</th>
-                <th className="px-4 py-3">Salida manana</th>
-                <th className="px-4 py-3">Multa manana</th>
-                <th className="px-4 py-3">Entrada tarde</th>
-                <th className="px-4 py-3">Salida tarde</th>
-                <th className="px-4 py-3">Multa tarde</th>
-                <th className="px-4 py-3">Total multas</th>
-                <th className="px-4 py-3">Asistencia</th>
-                <th className="px-4 py-3">GPS</th>
+                <th className="px-4 py-3">Turno</th>
+                <th className="px-4 py-3">Entrada</th>
+                <th className="px-4 py-3">Salida</th>
+                <th className="px-4 py-3">Minutos de retraso</th>
+                <th className="px-4 py-3">Estado</th>
+                <th className="px-4 py-3">Multa aplicada</th>
+                <th className="px-4 py-3">Tolerancia utilizada</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={11}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={10}>
                     Cargando...
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={11}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={10}>
                     No hay registros para los filtros seleccionados.
                   </td>
                 </tr>
@@ -253,29 +250,70 @@ export function ReportsTable() {
                     <td className="px-4 py-3 font-semibold text-slate-950">
                       {row.workerName}
                     </td>
+                    <td className="px-4 py-3 font-mono text-slate-700">{row.workerDni}</td>
                     <td className="px-4 py-3 text-slate-700">{row.date}</td>
-                    <td className="px-4 py-3 text-slate-700">{formatTime(row.checkInTime)}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {shiftTypeLabels[row.shiftType] ?? row.shiftType}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{formatTime(row.serverTime)}</td>
                     <td className="px-4 py-3 text-slate-700">{formatTime(row.checkOutTime)}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-950">
-                      {fineLabel(row.penaltyLabel, row.fineAmountCents)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {formatTime(row.afternoonCheckInTime)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {formatTime(row.afternoonCheckOutTime)}
+                    <td className="px-4 py-3 text-slate-700">{row.lateMinutes}</td>
+                    <td className="px-4 py-3">
+                      {attendanceStatusLabels[row.status] ?? row.status}
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-950">
-                      {fineLabel(row.afternoonPenaltyLabel, row.afternoonFineAmountCents)}
+                      {moneyLabel(row.fineAmountCents)}
                     </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {row.toleranceUsed ? "Si" : "No"}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <h2 className="text-lg font-bold text-slate-950">Totales por trabajador</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-[720px] w-full text-left text-sm">
+            <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
+              <tr>
+                <th className="px-4 py-3">Nombre completo</th>
+                <th className="px-4 py-3">DNI</th>
+                <th className="px-4 py-3">Total tardanzas</th>
+                <th className="px-4 py-3">Total faltas</th>
+                <th className="px-4 py-3">Total multas</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr>
+                  <td className="px-4 py-5 text-slate-500" colSpan={5}>
+                    Cargando...
+                  </td>
+                </tr>
+              ) : totals.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-5 text-slate-500" colSpan={5}>
+                    No hay totales para los filtros seleccionados.
+                  </td>
+                </tr>
+              ) : (
+                totals.map((total) => (
+                  <tr key={total.workerId}>
+                    <td className="px-4 py-3 font-semibold text-slate-950">
+                      {total.workerName}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-slate-700">{total.workerDni}</td>
+                    <td className="px-4 py-3 text-slate-700">{total.totalLate}</td>
+                    <td className="px-4 py-3 text-slate-700">{total.totalAbsent}</td>
                     <td className="px-4 py-3 font-bold text-slate-950">
-                      {moneyLabel(row.totalFineAmountCents)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {attendanceStatusLabels[row.attendanceStatus] ?? row.attendanceStatus}
-                    </td>
-                    <td className="px-4 py-3">
-                      {gpsStatusLabels[row.gpsStatus] ?? row.gpsStatus}
+                      {moneyLabel(total.totalFinesCents)}
                     </td>
                   </tr>
                 ))
