@@ -1,13 +1,14 @@
 import { and, count, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  attendanceRecords,
   locations,
+  shiftAttendanceRecords,
   workers,
   workSchedules
 } from "@/db/schema";
 import { DEFAULT_LOCATION, DEFAULT_SCHEDULE } from "@/lib/defaults";
 import { getBusinessDate } from "@/lib/dates";
+import { formatFineAmount } from "@/lib/penalties";
 
 export async function getCurrentLocation() {
   const [location] = await db.select().from(locations).limit(1);
@@ -46,15 +47,15 @@ export async function getDashboardStats() {
     .where(eq(workers.status, "active"));
   const [todayAttendance] = await db
     .select({ value: count() })
-    .from(attendanceRecords)
-    .where(eq(attendanceRecords.date, today));
+    .from(shiftAttendanceRecords)
+    .where(eq(shiftAttendanceRecords.date, today));
   const [todayLate] = await db
     .select({ value: count() })
-    .from(attendanceRecords)
+    .from(shiftAttendanceRecords)
     .where(
       and(
-        eq(attendanceRecords.date, today),
-        eq(attendanceRecords.attendanceStatus, "late")
+        eq(shiftAttendanceRecords.date, today),
+        eq(shiftAttendanceRecords.status, "late")
       )
     );
 
@@ -73,57 +74,120 @@ export type AttendanceFilters = {
   workerId?: number | null;
 };
 
+export type AttendanceReportRow = {
+  id: number;
+  workerId: number;
+  workerName: string;
+  workerDni: string;
+  date: string;
+  shiftType: "morning" | "afternoon";
+  serverTime: Date;
+  checkOutTime: Date | null;
+  status: string;
+  lateMinutes: number;
+  fineAmountCents: number;
+  toleranceUsed: boolean;
+  distanceMeters: number;
+};
+
+export type WorkerAttendanceTotals = {
+  workerId: number;
+  workerName: string;
+  workerDni: string;
+  totalLate: number;
+  totalAbsent: number;
+  totalFinesCents: number;
+};
+
 export async function getAttendanceReportRows(filters: AttendanceFilters) {
   const conditions = [];
 
   if (filters.date) {
-    conditions.push(eq(attendanceRecords.date, filters.date));
+    conditions.push(eq(shiftAttendanceRecords.date, filters.date));
   } else {
     if (filters.from) {
-      conditions.push(gte(attendanceRecords.date, filters.from));
+      conditions.push(gte(shiftAttendanceRecords.date, filters.from));
     }
     if (filters.to) {
-      conditions.push(lte(attendanceRecords.date, filters.to));
+      conditions.push(lte(shiftAttendanceRecords.date, filters.to));
     }
   }
 
   if (filters.workerId) {
-    conditions.push(eq(attendanceRecords.workerId, filters.workerId));
+    conditions.push(eq(shiftAttendanceRecords.workerId, filters.workerId));
   }
 
   const query = db
     .select({
-      id: attendanceRecords.id,
-      workerId: attendanceRecords.workerId,
+      id: shiftAttendanceRecords.id,
+      workerId: shiftAttendanceRecords.workerId,
       workerName: workers.fullName,
-      date: attendanceRecords.date,
-      checkInTime: attendanceRecords.checkInTime,
-      checkOutTime: attendanceRecords.checkOutTime,
-      afternoonCheckInTime: attendanceRecords.afternoonCheckInTime,
-      afternoonCheckOutTime: attendanceRecords.afternoonCheckOutTime,
-      gpsStatus: attendanceRecords.gpsStatus,
-      attendanceStatus: attendanceRecords.attendanceStatus,
-      lateMinutes: attendanceRecords.lateMinutes,
-      fineAmountCents: attendanceRecords.fineAmountCents,
-      penaltyLabel: attendanceRecords.penaltyLabel,
-      afternoonLateMinutes: attendanceRecords.afternoonLateMinutes,
-      afternoonFineAmountCents: attendanceRecords.afternoonFineAmountCents,
-      afternoonPenaltyLabel: attendanceRecords.afternoonPenaltyLabel,
-      totalFineAmountCents: attendanceRecords.totalFineAmountCents,
-      createdAt: attendanceRecords.createdAt
+      workerDni: shiftAttendanceRecords.dni,
+      date: shiftAttendanceRecords.date,
+      shiftType: shiftAttendanceRecords.shiftType,
+      serverTime: shiftAttendanceRecords.serverTime,
+      checkOutTime: shiftAttendanceRecords.checkOutTime,
+      status: shiftAttendanceRecords.status,
+      lateMinutes: shiftAttendanceRecords.lateMinutes,
+      fineAmountCents: shiftAttendanceRecords.fineAmountCents,
+      toleranceUsed: shiftAttendanceRecords.toleranceUsed,
+      distanceMeters: shiftAttendanceRecords.distanceMeters
     })
-    .from(attendanceRecords)
-    .innerJoin(workers, eq(workers.id, attendanceRecords.workerId));
+    .from(shiftAttendanceRecords)
+    .innerJoin(workers, eq(workers.id, shiftAttendanceRecords.workerId));
 
   const condition = conditions.length ? and(...conditions) : undefined;
 
   if (condition) {
     return query
       .where(condition)
-      .orderBy(desc(attendanceRecords.date), desc(attendanceRecords.createdAt));
+      .orderBy(
+        desc(shiftAttendanceRecords.date),
+        sql`lower(${workers.fullName})`,
+        shiftAttendanceRecords.shiftType
+      );
   }
 
-  return query.orderBy(desc(attendanceRecords.date), desc(attendanceRecords.createdAt));
+  return query.orderBy(
+    desc(shiftAttendanceRecords.date),
+    sql`lower(${workers.fullName})`,
+    shiftAttendanceRecords.shiftType
+  );
+}
+
+export async function getWorkerAttendanceTotals(filters: AttendanceFilters) {
+  const rows = await getAttendanceReportRows(filters);
+  const totalsMap = new Map<number, WorkerAttendanceTotals>();
+
+  for (const row of rows) {
+    const current = totalsMap.get(row.workerId) ?? {
+      workerId: row.workerId,
+      workerName: row.workerName,
+      workerDni: row.workerDni,
+      totalLate: 0,
+      totalAbsent: 0,
+      totalFinesCents: 0
+    };
+
+    if (row.status === "late") {
+      current.totalLate += 1;
+    }
+
+    if (row.status === "absent") {
+      current.totalAbsent += 1;
+    }
+
+    current.totalFinesCents += row.fineAmountCents;
+    totalsMap.set(row.workerId, current);
+  }
+
+  return Array.from(totalsMap.values()).sort((left, right) =>
+    left.workerName.localeCompare(right.workerName, "es")
+  );
+}
+
+export function formatReportFineLabel(fineAmountCents: number) {
+  return fineAmountCents ? formatFineAmount(fineAmountCents) : "Sin multa";
 }
 
 export async function getWorkerOptions() {

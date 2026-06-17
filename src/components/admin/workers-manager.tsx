@@ -5,14 +5,13 @@ import {
   Clock,
   Plus,
   RefreshCw,
-  RotateCcw,
   Save,
   Trash2,
   UserCheck,
   UserX,
   X
 } from "lucide-react";
-import { codeUsedLabels, workerStatusLabels } from "@/lib/labels";
+import { workerStatusLabels } from "@/lib/labels";
 
 type WorkerDaySchedule = {
   id?: number;
@@ -30,15 +29,13 @@ type WorkerDaySchedule = {
 type WorkerRow = {
   id: number;
   fullName: string;
-  activationCode: string;
-  codeUsed: boolean;
+  dni: string;
   status: "pending" | "active" | "inactive";
   scheduleEntryTime: string | null;
   scheduleExitTime: string | null;
   scheduleToleranceMinutes: number | null;
   daySchedules?: WorkerDaySchedule[];
   createdAt: string;
-  activatedAt: string | null;
 };
 
 type DayScheduleForm = {
@@ -51,7 +48,6 @@ type DayScheduleForm = {
   afternoonEnabled: boolean;
   afternoonEntryTime: string;
   afternoonExitTime: string;
-  toleranceMinutes: string;
 };
 
 type WorkerScheduleForm = {
@@ -75,12 +71,11 @@ function defaultScheduleForm(enabled = false): WorkerScheduleForm {
       label: day.label,
       enabled,
       morningEnabled: enabled,
-      morningEntryTime: "09:00",
+      morningEntryTime: "08:00",
       morningExitTime: "13:00",
       afternoonEnabled: enabled,
-      afternoonEntryTime: "15:00",
-      afternoonExitTime: "19:00",
-      toleranceMinutes: "10"
+      afternoonEntryTime: "14:00",
+      afternoonExitTime: "19:00"
     }))
   };
 }
@@ -149,13 +144,12 @@ function scheduleLabel(worker: WorkerRow) {
           schedule.morningEntryTime === daySchedules[0].morningEntryTime &&
           schedule.morningExitTime === daySchedules[0].morningExitTime &&
           schedule.afternoonEntryTime === daySchedules[0].afternoonEntryTime &&
-          schedule.afternoonExitTime === daySchedules[0].afternoonExitTime &&
-          schedule.toleranceMinutes === daySchedules[0].toleranceMinutes
+          schedule.afternoonExitTime === daySchedules[0].afternoonExitTime
       );
 
     if (allSame) {
       const schedule = daySchedules[0];
-      return `Lun-Vie ${shiftSummary(schedule)} (${schedule.toleranceMinutes} min)`;
+      return `Lun-Vie ${shiftSummary(schedule)}`;
     }
 
     const labels = daySchedules
@@ -167,7 +161,7 @@ function scheduleLabel(worker: WorkerRow) {
   }
 
   if (hasLegacyCustomSchedule(worker)) {
-    return `${timeLabel(worker.scheduleEntryTime)} - ${timeLabel(worker.scheduleExitTime)} (${worker.scheduleToleranceMinutes} min)`;
+    return `${timeLabel(worker.scheduleEntryTime)} - ${timeLabel(worker.scheduleExitTime)}`;
   }
 
   return "General";
@@ -218,7 +212,6 @@ function scheduleFormFromWorker(worker: WorkerRow): WorkerScheduleForm {
                 null
             ) ||
             day.afternoonExitTime,
-          toleranceMinutes: String(schedule?.toleranceMinutes ?? day.toleranceMinutes)
         };
       })
     };
@@ -235,8 +228,7 @@ function scheduleFormFromWorker(worker: WorkerRow): WorkerScheduleForm {
         morningExitTime: day.morningExitTime,
         afternoonEnabled: true,
         afternoonEntryTime: day.afternoonEntryTime,
-        afternoonExitTime: timeLabel(worker.scheduleExitTime) || day.afternoonExitTime,
-        toleranceMinutes: String(worker.scheduleToleranceMinutes ?? 10)
+        afternoonExitTime: timeLabel(worker.scheduleExitTime) || day.afternoonExitTime
       }))
     };
   }
@@ -264,8 +256,7 @@ function serializeDaySchedules(form: WorkerScheduleForm) {
         morningEntryTime,
         morningExitTime,
         afternoonEntryTime,
-        afternoonExitTime,
-        toleranceMinutes: day.toleranceMinutes
+        afternoonExitTime
       };
     });
 }
@@ -291,7 +282,7 @@ function ScheduleDaysEditor({
       {form.days.map((day) => (
         <div
           key={day.weekday}
-          className="grid gap-3 rounded-md border border-slate-200 p-3 md:grid-cols-[120px_1fr_1fr_120px]"
+          className="grid gap-3 rounded-md border border-slate-200 p-3 md:grid-cols-[120px_1fr_1fr]"
         >
           <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <input
@@ -398,20 +389,6 @@ function ScheduleDaysEditor({
               </label>
             </div>
           </div>
-          <label>
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Tolerancia
-            </span>
-            <input
-              value={day.toleranceMinutes}
-              onChange={(event) =>
-                updateDay(day.weekday, { toleranceMinutes: event.target.value })
-              }
-              disabled={!day.enabled}
-              inputMode="numeric"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-400"
-            />
-          </label>
         </div>
       ))}
     </div>
@@ -421,6 +398,7 @@ function ScheduleDaysEditor({
 export function WorkersManager() {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [fullName, setFullName] = useState("");
+  const [dni, setDni] = useState("");
   const [createSchedule, setCreateSchedule] = useState<WorkerScheduleForm>(
     defaultScheduleForm(false)
   );
@@ -460,6 +438,7 @@ export function WorkersManager() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         fullName,
+        dni,
         ...(createSchedule.useCustomSchedule
           ? { daySchedules: serializeDaySchedules(createSchedule) }
           : {})
@@ -474,8 +453,9 @@ export function WorkersManager() {
     }
 
     setFullName("");
+    setDni("");
     setCreateSchedule(defaultScheduleForm(false));
-    setMessage(`Trabajador registrado. Codigo: ${data.activationCode}`);
+    setMessage(`Trabajador registrado: ${data.fullName} (${data.dni}).`);
     await loadWorkers();
   }
 
@@ -493,22 +473,6 @@ export function WorkersManager() {
       return;
     }
 
-    await loadWorkers();
-  }
-
-  async function regenerate(worker: WorkerRow) {
-    setError("");
-    const response = await fetch(`/api/admin/workers/${worker.id}/regenerate-code`, {
-      method: "POST"
-    });
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      setError(data.error ?? "No se pudo regenerar el codigo.");
-      return;
-    }
-
-    setMessage(`Nuevo codigo para ${worker.fullName}: ${data.activationCode}`);
     await loadWorkers();
   }
 
@@ -584,7 +548,7 @@ export function WorkersManager() {
       </div>
 
       <section className="mb-6 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
-        <form onSubmit={submit} className="grid gap-4 lg:grid-cols-[1fr_auto]">
+        <form onSubmit={submit} className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
           <label>
             <span className="text-sm font-medium text-slate-700">Nombre completo</span>
             <input
@@ -592,6 +556,17 @@ export function WorkersManager() {
               onChange={(event) => setFullName(event.target.value)}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               placeholder="Juan Perez"
+            />
+          </label>
+          <label>
+            <span className="text-sm font-medium text-slate-700">DNI</span>
+            <input
+              value={dni}
+              onChange={(event) => setDni(event.target.value.replace(/\D/g, "").slice(0, 8))}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              placeholder="12345678"
+              inputMode="numeric"
+              maxLength={8}
             />
           </label>
           <div className="lg:self-end">
@@ -605,7 +580,7 @@ export function WorkersManager() {
             </button>
           </div>
 
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-3">
             <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
               <input
                 type="checkbox"
@@ -624,7 +599,7 @@ export function WorkersManager() {
           </div>
 
           {createSchedule.useCustomSchedule ? (
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-3">
               <ScheduleDaysEditor form={createSchedule} onChange={setCreateSchedule} />
             </div>
           ) : null}
@@ -645,30 +620,28 @@ export function WorkersManager() {
 
       <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-[1120px] w-full text-left text-sm">
+          <table className="min-w-[960px] w-full text-left text-sm">
             <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
               <tr>
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Nombre completo</th>
-                <th className="px-4 py-3">Codigo</th>
-                <th className="px-4 py-3">Estado codigo</th>
-                <th className="px-4 py-3">Usuario</th>
+                <th className="px-4 py-3">DNI</th>
+                <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Horario</th>
                 <th className="px-4 py-3">Creacion</th>
-                <th className="px-4 py-3">Activacion</th>
                 <th className="px-4 py-3 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={9}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={7}>
                     Cargando...
                   </td>
                 </tr>
               ) : workers.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={9}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={7}>
                     No hay trabajadores registrados.
                   </td>
                 </tr>
@@ -679,20 +652,12 @@ export function WorkersManager() {
                     <td className="px-4 py-3 font-semibold text-slate-950">
                       {worker.fullName}
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-md bg-slate-900 px-2 py-1 font-mono text-sm font-bold text-white">
-                        {worker.activationCode}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {codeUsedLabels[String(worker.codeUsed)]}
+                    <td className="px-4 py-3 font-mono font-semibold text-slate-950">
+                      {worker.dni}
                     </td>
                     <td className="px-4 py-3">{statusBadge(worker.status)}</td>
                     <td className="px-4 py-3 text-slate-700">{scheduleLabel(worker)}</td>
                     <td className="px-4 py-3 text-slate-600">{formatDate(worker.createdAt)}</td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {formatDate(worker.activatedAt)}
-                    </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
                         {worker.status === "inactive" ? (
@@ -716,15 +681,6 @@ export function WorkersManager() {
                             <UserX className="h-4 w-4" aria-hidden="true" />
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => regenerate(worker)}
-                          className="rounded-md border border-blue-200 p-2 text-blue-700 transition hover:bg-blue-50"
-                          aria-label="Regenerar codigo"
-                          title="Regenerar codigo"
-                        >
-                          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                        </button>
                         <button
                           type="button"
                           onClick={() => openScheduleModal(worker)}

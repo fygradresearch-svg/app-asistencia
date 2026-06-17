@@ -26,6 +26,27 @@ export function getBusinessWeekday(date = new Date()) {
   return utcDay === 0 ? 7 : utcDay;
 }
 
+export function getWeekStartDate(date = new Date()) {
+  const weekday = getBusinessWeekday(date);
+  const [year, month, day] = getBusinessDate(date).split("-").map(Number);
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+  utcDate.setUTCDate(utcDate.getUTCDate() - (weekday - 1));
+  const weekYear = utcDate.getUTCFullYear();
+  const weekMonth = String(utcDate.getUTCMonth() + 1).padStart(2, "0");
+  const weekDay = String(utcDate.getUTCDate()).padStart(2, "0");
+  return `${weekYear}-${weekMonth}-${weekDay}`;
+}
+
+export function getWeekEndDate(date = new Date()) {
+  const [year, month, day] = getWeekStartDate(date).split("-").map(Number);
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+  utcDate.setUTCDate(utcDate.getUTCDate() + 6);
+  const weekYear = utcDate.getUTCFullYear();
+  const weekMonth = String(utcDate.getUTCMonth() + 1).padStart(2, "0");
+  const weekDay = String(utcDate.getUTCDate()).padStart(2, "0");
+  return `${weekYear}-${weekMonth}-${weekDay}`;
+}
+
 export function getBusinessTime(date = new Date()) {
   const parts = getParts(date, {
     hour: "2-digit",
@@ -40,11 +61,6 @@ export function getBusinessTime(date = new Date()) {
 export function minutesFromTime(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
-}
-
-export function isLateForSchedule(now: Date, entryTime: string, toleranceMinutes: number) {
-  const current = getBusinessTime(now).slice(0, 5);
-  return minutesFromTime(current) > minutesFromTime(entryTime) + toleranceMinutes;
 }
 
 export function minutesAfterEntry(now: Date, entryTime: string) {

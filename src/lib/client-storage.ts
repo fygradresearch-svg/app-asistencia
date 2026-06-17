@@ -1,1 +1,1 @@
-export const WORKER_DEVICE_TOKEN_KEY = "attendance_device_token";
+export const WORKER_DNI_KEY = "attendance_worker_dni";

@@ -19,12 +19,13 @@ export const workerStatusEnum = pgEnum("worker_status", [
   "inactive"
 ]);
 
-export const attendanceStatusEnum = pgEnum("attendance_status", [
+export const shiftTypeEnum = pgEnum("shift_type", ["morning", "afternoon"]);
+
+export const shiftAttendanceStatusEnum = pgEnum("shift_attendance_status", [
   "punctual",
+  "tolerance",
   "late",
-  "absent",
-  "incomplete",
-  "rejected_gps"
+  "absent"
 ]);
 
 export const gpsStatusEnum = pgEnum("gps_status", ["valid", "outside_zone"]);
@@ -41,15 +42,12 @@ export const admins = pgTable("admins", {
 export const workers = pgTable("workers", {
   id: serial("id").primaryKey(),
   fullName: varchar("full_name", { length: 180 }).notNull(),
-  activationCode: varchar("activation_code", { length: 4 }).notNull().unique(),
-  codeUsed: boolean("code_used").default(false).notNull(),
-  status: workerStatusEnum("status").default("pending").notNull(),
-  deviceToken: varchar("device_token", { length: 160 }).unique(),
+  dni: varchar("dni", { length: 8 }).notNull().unique(),
+  status: workerStatusEnum("status").default("active").notNull(),
   scheduleEntryTime: time("schedule_entry_time"),
   scheduleExitTime: time("schedule_exit_time"),
   scheduleToleranceMinutes: integer("schedule_tolerance_minutes"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  activatedAt: timestamp("activated_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
 
@@ -98,48 +96,36 @@ export const workSchedules = pgTable("work_schedules", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
 
-export const attendanceRecords = pgTable(
-  "attendance_records",
+export const shiftAttendanceRecords = pgTable(
+  "shift_attendance_records",
   {
     id: serial("id").primaryKey(),
     workerId: integer("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
+    dni: varchar("dni", { length: 8 }).notNull(),
     date: date("date", { mode: "string" }).notNull(),
-    checkInTime: timestamp("check_in_time", { withTimezone: true }),
-    checkOutTime: timestamp("check_out_time", { withTimezone: true }),
-    checkInLatitude: doublePrecision("check_in_latitude"),
-    checkInLongitude: doublePrecision("check_in_longitude"),
-    checkOutLatitude: doublePrecision("check_out_latitude"),
-    checkOutLongitude: doublePrecision("check_out_longitude"),
-    checkInDistanceMeters: doublePrecision("check_in_distance_meters"),
-    checkOutDistanceMeters: doublePrecision("check_out_distance_meters"),
-    afternoonCheckInTime: timestamp("afternoon_check_in_time", { withTimezone: true }),
-    afternoonCheckOutTime: timestamp("afternoon_check_out_time", { withTimezone: true }),
-    afternoonCheckInLatitude: doublePrecision("afternoon_check_in_latitude"),
-    afternoonCheckInLongitude: doublePrecision("afternoon_check_in_longitude"),
-    afternoonCheckOutLatitude: doublePrecision("afternoon_check_out_latitude"),
-    afternoonCheckOutLongitude: doublePrecision("afternoon_check_out_longitude"),
-    afternoonCheckInDistanceMeters: doublePrecision("afternoon_check_in_distance_meters"),
-    afternoonCheckOutDistanceMeters: doublePrecision("afternoon_check_out_distance_meters"),
-    gpsStatus: gpsStatusEnum("gps_status").default("valid").notNull(),
-    attendanceStatus: attendanceStatusEnum("attendance_status").notNull(),
+    serverTime: timestamp("server_time", { withTimezone: true }).notNull(),
+    shiftType: shiftTypeEnum("shift_type").notNull(),
+    distanceMeters: doublePrecision("distance_meters").notNull(),
+    latitude: doublePrecision("latitude").notNull(),
+    longitude: doublePrecision("longitude").notNull(),
+    status: shiftAttendanceStatusEnum("status").notNull(),
     lateMinutes: integer("late_minutes").default(0).notNull(),
     fineAmountCents: integer("fine_amount_cents").default(0).notNull(),
-    penaltyLabel: varchar("penalty_label", { length: 40 }).default("Sin multa").notNull(),
-    afternoonLateMinutes: integer("afternoon_late_minutes").default(0).notNull(),
-    afternoonFineAmountCents: integer("afternoon_fine_amount_cents").default(0).notNull(),
-    afternoonPenaltyLabel: varchar("afternoon_penalty_label", { length: 40 })
-      .default("Sin multa")
-      .notNull(),
-    totalFineAmountCents: integer("total_fine_amount_cents").default(0).notNull(),
+    toleranceUsed: boolean("tolerance_used").default(false).notNull(),
+    checkOutTime: timestamp("check_out_time", { withTimezone: true }),
+    checkOutLatitude: doublePrecision("check_out_latitude"),
+    checkOutLongitude: doublePrecision("check_out_longitude"),
+    checkOutDistanceMeters: doublePrecision("check_out_distance_meters"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
-    workerDateUnique: uniqueIndex("attendance_worker_date_unique").on(
+    workerDateShiftUnique: uniqueIndex("shift_attendance_worker_date_shift_unique").on(
       table.workerId,
-      table.date
+      table.date,
+      table.shiftType
     )
   })
 );
@@ -160,10 +146,11 @@ export const attendanceAttempts = pgTable("attendance_attempts", {
 });
 
 export type WorkerStatus = (typeof workerStatusEnum.enumValues)[number];
-export type AttendanceStatus = (typeof attendanceStatusEnum.enumValues)[number];
+export type ShiftType = (typeof shiftTypeEnum.enumValues)[number];
+export type ShiftAttendanceStatus = (typeof shiftAttendanceStatusEnum.enumValues)[number];
 export type GpsStatus = (typeof gpsStatusEnum.enumValues)[number];
 export type AttemptType = (typeof attemptTypeEnum.enumValues)[number];
 
 export type Worker = typeof workers.$inferSelect;
 export type WorkerDaySchedule = typeof workerDaySchedules.$inferSelect;
-export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
+export type ShiftAttendanceRecord = typeof shiftAttendanceRecords.$inferSelect;

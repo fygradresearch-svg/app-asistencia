@@ -4,9 +4,10 @@ import { markAttendance } from "@/lib/attendance-service";
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as
-    | { latitude?: unknown; longitude?: unknown }
+    | { dni?: unknown; latitude?: unknown; longitude?: unknown }
     | null;
 
+  const dni = typeof body?.dni === "string" ? body.dni : "";
   const latitude = parseNumber(body?.latitude);
   const longitude = parseNumber(body?.longitude);
 
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
   }
 
   const result = await markAttendance({
-    request,
+    dni,
     type: "check_in",
     latitude,
     longitude

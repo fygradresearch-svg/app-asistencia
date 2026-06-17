@@ -2,14 +2,16 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   attendanceAttempts,
-  attendanceRecords,
+  shiftAttendanceRecords,
   type AttemptType
 } from "@/db/schema";
 import { getBusinessDate } from "@/lib/dates";
+import { MAX_GPS_RADIUS_METERS } from "@/lib/defaults";
 import { getCurrentLocation } from "@/lib/data";
 import { haversineDistanceMeters } from "@/lib/gps";
-import { ABSENCE_PENALTY, evaluateAttendancePenalty } from "@/lib/penalties";
-import { getWorkerFromRequest } from "@/lib/worker-auth";
+import { evaluateShiftPenalty } from "@/lib/penalties";
+import { getWorkerByDni, isValidDni, normalizeDni } from "@/lib/worker-auth";
+import { hasWeeklyToleranceBeenUsed } from "@/lib/weekly-tolerance";
 import {
   getScheduleForWorker,
   getShiftEntryTime,
@@ -20,7 +22,7 @@ import {
 } from "@/lib/worker-schedules";
 
 type MarkAttendanceInput = {
-  request: Request;
+  dni: string;
   type: AttemptType;
   latitude: number;
   longitude: number;
@@ -30,6 +32,9 @@ type MarkAttendanceResult = {
   status: number;
   body: Record<string, unknown>;
 };
+
+const GPS_OUTSIDE_ZONE_MESSAGE =
+  "No se encuentra dentro de la zona autorizada para registrar asistencia.";
 
 function invalidCoordinates(latitude: number, longitude: number) {
   return (
@@ -43,46 +48,56 @@ function invalidCoordinates(latitude: number, longitude: number) {
 }
 
 function getShiftForCheckOut(
-  record: typeof attendanceRecords.$inferSelect,
+  records: (typeof shiftAttendanceRecords.$inferSelect)[],
   schedule: DayShiftSchedule
 ): ShiftName | null {
-  if (
-    hasShift(schedule, "afternoon") &&
-    record.afternoonCheckInTime &&
-    !record.afternoonCheckOutTime
-  ) {
+  const morning = records.find((record) => record.shiftType === "morning");
+  const afternoon = records.find((record) => record.shiftType === "afternoon");
+
+  if (hasShift(schedule, "afternoon") && afternoon?.serverTime && !afternoon.checkOutTime) {
     return "afternoon";
   }
 
-  if (hasShift(schedule, "morning") && record.checkInTime && !record.checkOutTime) {
+  if (hasShift(schedule, "morning") && morning?.serverTime && !morning.checkOutTime) {
     return "morning";
   }
 
   return null;
 }
 
-function aggregateStatus(
-  morningStatus: string | null,
-  afternoonStatus: string | null
-) {
-  if (morningStatus === "absent" || afternoonStatus === "absent") {
-    return "absent";
+function penaltyMessage(shift: ShiftName, penalty: ReturnType<typeof evaluateShiftPenalty>) {
+  const shiftLabel = shift === "morning" ? "manana" : "tarde";
+
+  if (penalty.status === "punctual") {
+    return `Entrada de la ${shiftLabel} registrada.`;
   }
-  if (morningStatus === "late" || afternoonStatus === "late") {
-    return "late";
+
+  if (penalty.status === "tolerance") {
+    return `Entrada de la ${shiftLabel} registrada dentro de la tolerancia semanal.`;
   }
-  if (morningStatus === "punctual" || afternoonStatus === "punctual") {
-    return "punctual";
+
+  if (penalty.status === "late") {
+    return `Entrada de la ${shiftLabel} registrada con tardanza. Multa: ${penalty.penaltyLabel}.`;
   }
-  return "incomplete";
+
+  return `Entrada de la ${shiftLabel} registrada como falta.`;
 }
 
 export async function markAttendance({
-  request,
+  dni,
   type,
   latitude,
   longitude
 }: MarkAttendanceInput): Promise<MarkAttendanceResult> {
+  const normalizedDni = normalizeDni(dni);
+
+  if (!isValidDni(normalizedDni)) {
+    return {
+      status: 400,
+      body: { error: "Ingresa un DNI valido de 8 digitos." }
+    };
+  }
+
   if (invalidCoordinates(latitude, longitude)) {
     return {
       status: 400,
@@ -90,11 +105,18 @@ export async function markAttendance({
     };
   }
 
-  const worker = await getWorkerFromRequest(request);
+  const worker = await getWorkerByDni(normalizedDni);
   if (!worker) {
     return {
-      status: 401,
-      body: { error: "Token invalido o trabajador inactivo." }
+      status: 404,
+      body: { error: "DNI no registrado." }
+    };
+  }
+
+  if (worker.status === "inactive") {
+    return {
+      status: 403,
+      body: { error: "Trabajador inactivo." }
     };
   }
 
@@ -112,7 +134,8 @@ export async function markAttendance({
     location.latitude,
     location.longitude
   );
-  const insideZone = distanceMeters <= location.allowedRadiusMeters;
+  const allowedRadius = Math.min(location.allowedRadiusMeters, MAX_GPS_RADIUS_METERS);
+  const insideZone = distanceMeters <= allowedRadius;
 
   if (!insideZone) {
     await db.insert(attendanceAttempts).values({
@@ -129,7 +152,7 @@ export async function markAttendance({
     return {
       status: 403,
       body: {
-        error: "No puedes marcar asistencia porque estas fuera de la ubicacion autorizada.",
+        error: GPS_OUTSIDE_ZONE_MESSAGE,
         distanceMeters
       }
     };
@@ -138,6 +161,7 @@ export async function markAttendance({
   const now = new Date();
   const today = getBusinessDate(now);
   const schedule = await getScheduleForWorker(worker, now);
+
   if (!schedule || (!hasShift(schedule, "morning") && !hasShift(schedule, "afternoon"))) {
     return {
       status: 400,
@@ -145,11 +169,12 @@ export async function markAttendance({
     };
   }
 
-  const [existing] = await db
+  const todayRecords = await db
     .select()
-    .from(attendanceRecords)
-    .where(and(eq(attendanceRecords.workerId, worker.id), eq(attendanceRecords.date, today)))
-    .limit(1);
+    .from(shiftAttendanceRecords)
+    .where(
+      and(eq(shiftAttendanceRecords.workerId, worker.id), eq(shiftAttendanceRecords.date, today))
+    );
 
   if (type === "check_in") {
     const shift = getShiftForCheckIn(now, schedule);
@@ -162,17 +187,13 @@ export async function markAttendance({
       };
     }
 
-    if (shift === "morning" && existing?.checkInTime) {
+    const existingShiftRecord = todayRecords.find((record) => record.shiftType === shift);
+    if (existingShiftRecord) {
       return {
         status: 409,
-        body: { error: "Ya registraste tu entrada de la manana." }
-      };
-    }
-
-    if (shift === "afternoon" && existing?.afternoonCheckInTime) {
-      return {
-        status: 409,
-        body: { error: "Ya registraste tu entrada de la tarde." }
+        body: {
+          error: `Ya registraste tu entrada de la ${shift === "morning" ? "manana" : "tarde"}.`
+        }
       };
     }
 
@@ -186,159 +207,52 @@ export async function markAttendance({
       accepted: true
     });
 
-    const penalty = evaluateAttendancePenalty(now, shiftEntryTime, schedule.toleranceMinutes);
-
-    if (shift === "afternoon") {
-      const morningStatus = hasShift(schedule, "morning")
-        ? existing?.checkInTime
-          ? existing.attendanceStatus === "late" || existing.fineAmountCents > 0
-            ? "late"
-            : "punctual"
-          : ABSENCE_PENALTY.attendanceStatus
-        : null;
-      const attendanceStatus = aggregateStatus(morningStatus, penalty.attendanceStatus);
-
-      if (existing) {
-        const morningFine = existing.checkInTime
-          ? existing.fineAmountCents
-          : hasShift(schedule, "morning")
-            ? ABSENCE_PENALTY.fineAmountCents
-            : 0;
-        const [record] = await db
-          .update(attendanceRecords)
-          .set({
-            ...(existing.checkInTime || !hasShift(schedule, "morning")
-              ? {}
-              : {
-                  fineAmountCents: ABSENCE_PENALTY.fineAmountCents,
-                  penaltyLabel: ABSENCE_PENALTY.penaltyLabel
-                }),
-            afternoonCheckInTime: now,
-            afternoonCheckInLatitude: latitude,
-            afternoonCheckInLongitude: longitude,
-            afternoonCheckInDistanceMeters: distanceMeters,
-            afternoonLateMinutes: penalty.lateMinutes,
-            afternoonFineAmountCents: penalty.fineAmountCents,
-            afternoonPenaltyLabel: penalty.penaltyLabel,
-            totalFineAmountCents: morningFine + penalty.fineAmountCents,
-            attendanceStatus,
-            gpsStatus: "valid",
-            updatedAt: now
-          })
-          .where(eq(attendanceRecords.id, existing.id))
-          .returning();
-
-        return {
-          status: 200,
-          body: {
-            ok: true,
-            message:
-              penalty.attendanceStatus === "late"
-                ? `Entrada de la tarde registrada con tardanza. Multa: ${penalty.penaltyLabel}.`
-                : penalty.attendanceStatus === "absent"
-                  ? "Entrada de la tarde registrada como falta."
-                  : "Entrada de la tarde registrada.",
-            record,
-            distanceMeters
-          }
-        };
-      }
-
-      const [record] = await db
-        .insert(attendanceRecords)
-        .values({
-          workerId: worker.id,
-          date: today,
-          afternoonCheckInTime: now,
-          afternoonCheckInLatitude: latitude,
-          afternoonCheckInLongitude: longitude,
-          afternoonCheckInDistanceMeters: distanceMeters,
-          gpsStatus: "valid",
-          attendanceStatus,
-          lateMinutes: 0,
-          fineAmountCents: hasShift(schedule, "morning")
-            ? ABSENCE_PENALTY.fineAmountCents
-            : 0,
-          penaltyLabel: hasShift(schedule, "morning")
-            ? ABSENCE_PENALTY.penaltyLabel
-            : "Sin multa",
-          afternoonLateMinutes: penalty.lateMinutes,
-          afternoonFineAmountCents: penalty.fineAmountCents,
-          afternoonPenaltyLabel: penalty.penaltyLabel,
-          totalFineAmountCents:
-            (hasShift(schedule, "morning") ? ABSENCE_PENALTY.fineAmountCents : 0) +
-            penalty.fineAmountCents,
-          updatedAt: now
-        })
-        .returning();
-
-      return {
-        status: 201,
-        body: {
-          ok: true,
-          message:
-            penalty.attendanceStatus === "late"
-              ? `Entrada de la tarde registrada con tardanza. Multa: ${penalty.penaltyLabel}.`
-              : penalty.attendanceStatus === "absent"
-                ? "Entrada de la tarde registrada como falta."
-                : "Entrada de la tarde registrada.",
-          record,
-          distanceMeters
-        }
-      };
-    }
+    const weeklyToleranceUsed = await hasWeeklyToleranceBeenUsed(worker.id, shift, now);
+    const penalty = evaluateShiftPenalty(now, shiftEntryTime, weeklyToleranceUsed);
 
     const [record] = await db
-      .insert(attendanceRecords)
+      .insert(shiftAttendanceRecords)
       .values({
         workerId: worker.id,
+        dni: worker.dni,
         date: today,
-        checkInTime: now,
-        checkInLatitude: latitude,
-        checkInLongitude: longitude,
-        checkInDistanceMeters: distanceMeters,
-        gpsStatus: "valid",
-        attendanceStatus: penalty.attendanceStatus,
+        serverTime: now,
+        shiftType: shift,
+        distanceMeters,
+        latitude,
+        longitude,
+        status: penalty.status,
         lateMinutes: penalty.lateMinutes,
         fineAmountCents: penalty.fineAmountCents,
-        penaltyLabel: penalty.penaltyLabel,
-        totalFineAmountCents: penalty.fineAmountCents,
+        toleranceUsed: penalty.toleranceUsed,
         updatedAt: now
       })
       .returning();
-
-    const messageByStatus = {
-      punctual: "Entrada registrada.",
-      late: `Entrada registrada con tardanza. Multa: ${penalty.penaltyLabel}.`,
-      absent: "Entrada registrada como falta.",
-      incomplete: "Entrada registrada.",
-      rejected_gps: "Entrada registrada."
-    };
 
     return {
       status: 201,
       body: {
         ok: true,
-        message: messageByStatus[penalty.attendanceStatus].replace("Entrada", "Entrada de la manana"),
+        message: penaltyMessage(shift, penalty),
         record,
         distanceMeters
       }
     };
   }
 
-  if (!existing) {
-    return {
-      status: 409,
-      body: { error: "No puedes marcar salida sin una entrada previa." }
-    };
-  }
-
-  const shift = getShiftForCheckOut(existing, schedule);
-
+  const shift = getShiftForCheckOut(todayRecords, schedule);
   if (!shift) {
     return {
       status: 409,
       body: { error: "No hay una entrada pendiente de salida." }
+    };
+  }
+
+  const existingShiftRecord = todayRecords.find((record) => record.shiftType === shift);
+  if (!existingShiftRecord) {
+    return {
+      status: 409,
+      body: { error: "No puedes marcar salida sin una entrada previa." }
     };
   }
 
@@ -352,39 +266,98 @@ export async function markAttendance({
     accepted: true
   });
 
-  const [record] =
-    shift === "morning"
-      ? await db
-          .update(attendanceRecords)
-          .set({
-            checkOutTime: now,
-            checkOutLatitude: latitude,
-            checkOutLongitude: longitude,
-            checkOutDistanceMeters: distanceMeters,
-            gpsStatus: "valid",
-            updatedAt: now
-          })
-          .where(eq(attendanceRecords.id, existing.id))
-          .returning()
-      : await db
-          .update(attendanceRecords)
-          .set({
-            afternoonCheckOutTime: now,
-            afternoonCheckOutLatitude: latitude,
-            afternoonCheckOutLongitude: longitude,
-            afternoonCheckOutDistanceMeters: distanceMeters,
-            gpsStatus: "valid",
-            updatedAt: now
-          })
-          .where(eq(attendanceRecords.id, existing.id))
-          .returning();
+  const [record] = await db
+    .update(shiftAttendanceRecords)
+    .set({
+      checkOutTime: now,
+      checkOutLatitude: latitude,
+      checkOutLongitude: longitude,
+      checkOutDistanceMeters: distanceMeters,
+      updatedAt: now
+    })
+    .where(eq(shiftAttendanceRecords.id, existingShiftRecord.id))
+    .returning();
 
   return {
     status: 200,
     body: {
       ok: true,
-      message: shift === "morning" ? "Salida de la manana registrada." : "Salida de la tarde registrada.",
+      message:
+        shift === "morning" ? "Salida de la manana registrada." : "Salida de la tarde registrada.",
       record,
+      distanceMeters
+    }
+  };
+}
+
+export async function verifyWorkerAccess(dni: string, latitude: number, longitude: number) {
+  const normalizedDni = normalizeDni(dni);
+
+  if (!isValidDni(normalizedDni)) {
+    return {
+      status: 400,
+      body: { error: "Ingresa un DNI valido de 8 digitos." }
+    };
+  }
+
+  if (invalidCoordinates(latitude, longitude)) {
+    return {
+      status: 400,
+      body: { error: "Coordenadas invalidas." }
+    };
+  }
+
+  const worker = await getWorkerByDni(normalizedDni);
+  if (!worker) {
+    return {
+      status: 404,
+      body: { error: "DNI no registrado." }
+    };
+  }
+
+  if (worker.status === "inactive") {
+    return {
+      status: 403,
+      body: { error: "Trabajador inactivo." }
+    };
+  }
+
+  const location = await getCurrentLocation();
+  if (!location) {
+    return {
+      status: 400,
+      body: { error: "No existe una ubicacion autorizada configurada." }
+    };
+  }
+
+  const distanceMeters = haversineDistanceMeters(
+    latitude,
+    longitude,
+    location.latitude,
+    location.longitude
+  );
+  const allowedRadius = Math.min(location.allowedRadiusMeters, MAX_GPS_RADIUS_METERS);
+
+  if (distanceMeters > allowedRadius) {
+    return {
+      status: 403,
+      body: {
+        error: GPS_OUTSIDE_ZONE_MESSAGE,
+        distanceMeters
+      }
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      worker: {
+        id: worker.id,
+        fullName: worker.fullName,
+        dni: worker.dni,
+        status: worker.status
+      },
       distanceMeters
     }
   };

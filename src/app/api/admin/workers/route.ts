@@ -1,14 +1,15 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { workerDaySchedules, workers } from "@/db/schema";
 import { requireAdminSession } from "@/lib/auth";
-import { generateUniqueActivationCode } from "@/lib/activation-code";
-import { isTimeString, jsonError, parseNumber } from "@/lib/http";
+import { isValidDni, normalizeDni } from "@/lib/worker-auth";
+import { jsonError } from "@/lib/http";
 import { normalizeDaySchedules, type DayScheduleInput } from "@/lib/schedule-input";
 
 type CreateWorkerBody = {
   fullName?: string;
+  dni?: string;
   scheduleEntryTime?: string | null;
   scheduleExitTime?: string | null;
   scheduleToleranceMinutes?: unknown;
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => null)) as CreateWorkerBody | null;
   const fullName = body?.fullName?.trim();
+  const dni = normalizeDni(body?.dni);
   let daySchedules: ReturnType<typeof normalizeDaySchedules> = [];
 
   try {
@@ -58,60 +60,58 @@ export async function POST(request: Request) {
       body?.scheduleToleranceMinutes !== undefined);
   const scheduleEntryTime = body?.scheduleEntryTime ?? null;
   const scheduleExitTime = body?.scheduleExitTime ?? null;
-  const scheduleToleranceMinutes = parseNumber(body?.scheduleToleranceMinutes);
+  const scheduleToleranceMinutes =
+    body?.scheduleToleranceMinutes === undefined ? null : Number(body.scheduleToleranceMinutes);
 
   if (!fullName || fullName.length < 3) {
     return jsonError("Ingresa el nombre completo del trabajador.", 400);
   }
 
+  if (!isValidDni(dni)) {
+    return jsonError("Ingresa un DNI valido de 8 digitos.", 400);
+  }
+
   if (hasCustomSchedule) {
     if (
-      !isTimeString(scheduleEntryTime) ||
-      !isTimeString(scheduleExitTime) ||
+      !scheduleEntryTime ||
+      !scheduleExitTime ||
       scheduleToleranceMinutes === null ||
+      Number.isNaN(scheduleToleranceMinutes) ||
       scheduleToleranceMinutes < 0
     ) {
       return jsonError("Completa correctamente el horario propio del trabajador.", 400);
     }
   }
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const activationCode = await generateUniqueActivationCode();
-
-    try {
-      const [created] = await db
-        .insert(workers)
-        .values({
-          fullName,
-          activationCode,
-          codeUsed: false,
-          status: "pending",
-          scheduleEntryTime: hasCustomSchedule ? scheduleEntryTime : null,
-          scheduleExitTime: hasCustomSchedule ? scheduleExitTime : null,
-          scheduleToleranceMinutes: hasCustomSchedule
-            ? Math.round(scheduleToleranceMinutes ?? 0)
-            : null,
-          updatedAt: new Date()
-        })
-        .returning();
-
-      if (daySchedules.length) {
-        await db.insert(workerDaySchedules).values(
-          daySchedules.map((schedule) => ({
-            workerId: created.id,
-            ...schedule,
-            updatedAt: new Date()
-          }))
-        );
-      }
-
-      return NextResponse.json(created, { status: 201 });
-    } catch (error) {
-      if (attempt === 4) {
-        throw error;
-      }
-    }
+  const [existingDni] = await db.select().from(workers).where(eq(workers.dni, dni)).limit(1);
+  if (existingDni) {
+    return jsonError("Ya existe un trabajador con ese DNI.", 409);
   }
 
-  return jsonError("No se pudo crear el trabajador.", 500);
+  const [created] = await db
+    .insert(workers)
+    .values({
+      fullName,
+      dni,
+      status: "active",
+      scheduleEntryTime: hasCustomSchedule ? scheduleEntryTime : null,
+      scheduleExitTime: hasCustomSchedule ? scheduleExitTime : null,
+      scheduleToleranceMinutes: hasCustomSchedule
+        ? Math.round(scheduleToleranceMinutes ?? 0)
+        : null,
+      updatedAt: new Date()
+    })
+    .returning();
+
+  if (daySchedules.length) {
+    await db.insert(workerDaySchedules).values(
+      daySchedules.map((schedule) => ({
+        workerId: created.id,
+        ...schedule,
+        updatedAt: new Date()
+      }))
+    );
+  }
+
+  return NextResponse.json(created, { status: 201 });
 }

@@ -36,7 +36,6 @@ export function normalizeDaySchedules(input: DayScheduleInput[] | undefined) {
   const seen = new Set<number>();
   return input.map((schedule) => {
     const weekday = parseNumber(schedule.weekday);
-    const toleranceMinutes = parseNumber(schedule.toleranceMinutes);
     const hasExplicitMorning =
       schedule.morningEntryTime !== undefined || schedule.morningExitTime !== undefined;
     const hasExplicitAfternoon =
@@ -49,7 +48,7 @@ export function normalizeDaySchedules(input: DayScheduleInput[] | undefined) {
       hasExplicitMorning ? schedule.morningExitTime : "13:00"
     );
     const afternoonEntryTime = cleanTime(
-      hasExplicitAfternoon ? schedule.afternoonEntryTime : "15:00"
+      hasExplicitAfternoon ? schedule.afternoonEntryTime : "14:00"
     );
     const afternoonExitTime = cleanTime(
       hasExplicitAfternoon ? schedule.afternoonExitTime : schedule.exitTime
@@ -65,9 +64,7 @@ export function normalizeDaySchedules(input: DayScheduleInput[] | undefined) {
       seen.has(weekday) ||
       (!hasMorning && !hasAfternoon) ||
       !validShift(morningEntryTime, morningExitTime) ||
-      !validShift(afternoonEntryTime, afternoonExitTime) ||
-      toleranceMinutes === null ||
-      toleranceMinutes < 0
+      !validShift(afternoonEntryTime, afternoonExitTime)
     ) {
       throw new Error("Horario por dia invalido.");
     }
@@ -83,13 +80,13 @@ export function normalizeDaySchedules(input: DayScheduleInput[] | undefined) {
     seen.add(weekday);
     return {
       weekday,
-      entryTime: morningEntryTime ?? afternoonEntryTime ?? "09:00",
+      entryTime: morningEntryTime ?? afternoonEntryTime ?? "08:00",
       exitTime: afternoonExitTime ?? morningExitTime ?? "19:00",
       morningEntryTime,
       morningExitTime,
       afternoonEntryTime,
       afternoonExitTime,
-      toleranceMinutes: Math.round(toleranceMinutes)
+      toleranceMinutes: 0
     };
   });
 }

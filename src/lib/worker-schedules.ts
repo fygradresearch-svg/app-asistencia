@@ -91,7 +91,7 @@ export async function getScheduleForWorker(
         morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
         afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
         afternoonExitTime: daySchedule.exitTime,
-        toleranceMinutes: daySchedule.toleranceMinutes
+        toleranceMinutes: 0
       };
     }
 

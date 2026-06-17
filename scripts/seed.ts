@@ -8,7 +8,12 @@ loadEnv({ path: ".env.local" });
 loadEnv();
 
 type AppDb = typeof import("../src/db").db;
-type CodeGenerator = typeof import("../src/lib/activation-code").generateUniqueActivationCode;
+
+const seedWorkersData = [
+  { fullName: "Juan Perez", dni: "12345678" },
+  { fullName: "Maria Lopez", dni: "87654321" },
+  { fullName: "Carlos Ramos", dni: "11223344" }
+];
 
 async function seedAdmin(db: AppDb) {
   const passwordHash = await bcrypt.hash("admin123", 10);
@@ -53,14 +58,12 @@ async function seedSchedule(db: AppDb) {
   await db.insert(workSchedules).values(DEFAULT_SCHEDULE);
 }
 
-async function seedWorkers(db: AppDb, generateUniqueActivationCode: CodeGenerator) {
-  const names = ["Juan Perez", "Maria Lopez", "Carlos Ramos"];
-
-  for (const fullName of names) {
+async function seedWorkers(db: AppDb) {
+  for (const worker of seedWorkersData) {
     const [existing] = await db
       .select({ id: workers.id })
       .from(workers)
-      .where(eq(workers.fullName, fullName))
+      .where(eq(workers.dni, worker.dni))
       .limit(1);
 
     if (existing) {
@@ -68,25 +71,21 @@ async function seedWorkers(db: AppDb, generateUniqueActivationCode: CodeGenerato
     }
 
     await db.insert(workers).values({
-      fullName,
-      activationCode: await generateUniqueActivationCode(),
-      codeUsed: false,
-      status: "pending",
+      fullName: worker.fullName,
+      dni: worker.dni,
+      status: "active",
       updatedAt: new Date()
     });
   }
 }
 
 async function main() {
-  const [{ db }, { generateUniqueActivationCode }] = await Promise.all([
-    import("../src/db"),
-    import("../src/lib/activation-code")
-  ]);
+  const { db } = await import("../src/db");
 
   await seedAdmin(db);
   await seedLocation(db);
   await seedSchedule(db);
-  await seedWorkers(db, generateUniqueActivationCode);
+  await seedWorkers(db);
   console.log("Seed completado.");
 }
 

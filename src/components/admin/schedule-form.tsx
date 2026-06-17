@@ -9,7 +9,6 @@ type ScheduleFormState = {
   morningExitTime: string;
   afternoonEntryTime: string;
   afternoonExitTime: string;
-  toleranceMinutes: string;
 };
 
 export function ScheduleForm() {
@@ -17,8 +16,7 @@ export function ScheduleForm() {
     morningEntryTime: "",
     morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
     afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
-    afternoonExitTime: "",
-    toleranceMinutes: ""
+    afternoonExitTime: ""
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -38,8 +36,7 @@ export function ScheduleForm() {
           morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
           afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
           afternoonExitTime:
-            data.exitTime?.slice(0, 5) ?? DEFAULT_SHIFT_SCHEDULE.afternoonExitTime,
-          toleranceMinutes: String(data.toleranceMinutes ?? "")
+            data.exitTime?.slice(0, 5) ?? DEFAULT_SHIFT_SCHEDULE.afternoonExitTime
         });
       } else {
         setError(data.error ?? "No se pudo cargar el horario.");
@@ -65,7 +62,7 @@ export function ScheduleForm() {
       body: JSON.stringify({
         entryTime: form.morningEntryTime,
         exitTime: form.afternoonExitTime,
-        toleranceMinutes: form.toleranceMinutes
+        toleranceMinutes: 0
       })
     });
     const data = await response.json().catch(() => ({}));
@@ -82,8 +79,7 @@ export function ScheduleForm() {
       morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
       afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
       afternoonExitTime:
-        data.exitTime?.slice(0, 5) ?? DEFAULT_SHIFT_SCHEDULE.afternoonExitTime,
-      toleranceMinutes: String(data.toleranceMinutes ?? "")
+        data.exitTime?.slice(0, 5) ?? DEFAULT_SHIFT_SCHEDULE.afternoonExitTime
     });
     setMessage("Horario guardado.");
   }
@@ -149,16 +145,6 @@ export function ScheduleForm() {
                 value={form.afternoonExitTime}
                 onChange={(event) => updateField("afternoonExitTime", event.target.value)}
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-              />
-            </label>
-
-            <label>
-              <span className="text-sm font-medium text-slate-700">Minutos de tolerancia</span>
-              <input
-                value={form.toleranceMinutes}
-                onChange={(event) => updateField("toleranceMinutes", event.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                inputMode="numeric"
               />
             </label>
 

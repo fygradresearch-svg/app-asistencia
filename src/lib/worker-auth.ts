@@ -1,23 +1,28 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { workers } from "@/db/schema";
-import { getBearerToken } from "@/lib/device-token";
 
-export async function getWorkerFromRequest(request: Request) {
-  const token = getBearerToken(request.headers);
-  if (!token) {
+const DNI_PATTERN = /^\d{8}$/;
+
+export function normalizeDni(value: string | undefined | null) {
+  return value?.trim() ?? "";
+}
+
+export function isValidDni(value: string) {
+  return DNI_PATTERN.test(value);
+}
+
+export async function getWorkerByDni(dni: string) {
+  const normalized = normalizeDni(dni);
+  if (!isValidDni(normalized)) {
     return null;
   }
 
   const [worker] = await db
     .select()
     .from(workers)
-    .where(eq(workers.deviceToken, token))
+    .where(eq(workers.dni, normalized))
     .limit(1);
 
-  if (!worker || worker.status !== "active") {
-    return null;
-  }
-
-  return worker;
+  return worker ?? null;
 }

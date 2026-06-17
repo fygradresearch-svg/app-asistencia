@@ -1,17 +1,28 @@
 import { NextResponse } from "next/server";
-import { getWorkerFromRequest } from "@/lib/worker-auth";
 import { jsonError } from "@/lib/http";
+import { getWorkerByDni, isValidDni, normalizeDni } from "@/lib/worker-auth";
 
 export async function GET(request: Request) {
-  const worker = await getWorkerFromRequest(request);
+  const url = new URL(request.url);
+  const dni = normalizeDni(url.searchParams.get("dni") ?? "");
+
+  if (!isValidDni(dni)) {
+    return jsonError("Ingresa un DNI valido de 8 digitos.", 400);
+  }
+
+  const worker = await getWorkerByDni(dni);
   if (!worker) {
-    return jsonError("Token invalido o trabajador inactivo.", 401);
+    return jsonError("DNI no registrado.", 404);
+  }
+
+  if (worker.status === "inactive") {
+    return jsonError("Trabajador inactivo.", 403);
   }
 
   return NextResponse.json({
     id: worker.id,
     fullName: worker.fullName,
-    status: worker.status,
-    activatedAt: worker.activatedAt
+    dni: worker.dni,
+    status: worker.status
   });
 }

@@ -1,51 +1,66 @@
-import type { AttendanceStatus } from "@/db/schema";
+import type { ShiftAttendanceStatus } from "@/db/schema";
 import { minutesAfterEntry } from "@/lib/dates";
+import { WEEKLY_TOLERANCE_MAX_MINUTES } from "@/lib/defaults";
 
-export type AttendancePenalty = {
-  attendanceStatus: AttendanceStatus;
+export type ShiftPenalty = {
+  status: ShiftAttendanceStatus;
   lateMinutes: number;
   fineAmountCents: number;
+  toleranceUsed: boolean;
   penaltyLabel: string;
 };
 
-export const ABSENCE_PENALTY: AttendancePenalty = {
-  attendanceStatus: "absent",
+export const ABSENCE_PENALTY: ShiftPenalty = {
+  status: "absent",
   lateMinutes: 0,
   fineAmountCents: 4000,
+  toleranceUsed: false,
   penaltyLabel: "Falta - S/. 40.00"
 };
 
-export function evaluateAttendancePenalty(
+export function evaluateShiftPenalty(
   now: Date,
   entryTime: string,
-  toleranceMinutes: number
-): AttendancePenalty {
+  weeklyToleranceUsed: boolean
+): ShiftPenalty {
   const lateMinutes = Math.max(0, minutesAfterEntry(now, entryTime));
-  const tolerance = Math.max(0, toleranceMinutes);
 
-  if (lateMinutes < tolerance) {
+  if (lateMinutes === 0) {
     return {
-      attendanceStatus: "punctual",
-      lateMinutes,
+      status: "punctual",
+      lateMinutes: 0,
       fineAmountCents: 0,
+      toleranceUsed: false,
       penaltyLabel: "Sin multa"
     };
   }
 
-  if (lateMinutes <= tolerance + 10) {
+  if (lateMinutes <= WEEKLY_TOLERANCE_MAX_MINUTES && !weeklyToleranceUsed) {
     return {
-      attendanceStatus: "late",
+      status: "tolerance",
+      lateMinutes,
+      fineAmountCents: 0,
+      toleranceUsed: true,
+      penaltyLabel: "Sin multa"
+    };
+  }
+
+  if (lateMinutes <= 20) {
+    return {
+      status: "late",
       lateMinutes,
       fineAmountCents: 1000,
+      toleranceUsed: false,
       penaltyLabel: "S/. 10.00"
     };
   }
 
-  if (lateMinutes <= tolerance + 20) {
+  if (lateMinutes <= 30) {
     return {
-      attendanceStatus: "late",
+      status: "late",
       lateMinutes,
       fineAmountCents: 2000,
+      toleranceUsed: false,
       penaltyLabel: "S/. 20.00"
     };
   }

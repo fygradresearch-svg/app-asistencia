@@ -4,17 +4,16 @@ export const workerStatusLabels: Record<string, string> = {
   inactive: "Inactivo"
 };
 
-export const codeUsedLabels: Record<string, string> = {
-  true: "Usado",
-  false: "No usado"
+export const shiftTypeLabels: Record<string, string> = {
+  morning: "Manana",
+  afternoon: "Tarde"
 };
 
 export const attendanceStatusLabels: Record<string, string> = {
   punctual: "Puntual",
+  tolerance: "Tolerancia",
   late: "Tardanza",
-  absent: "Falta",
-  incomplete: "Incompleta",
-  rejected_gps: "GPS rechazado"
+  absent: "Falta"
 };
 
 export const gpsStatusLabels: Record<string, string> = {
