@@ -16,9 +16,11 @@ export const DEFAULT_SCHEDULE = {
 export const DEFAULT_SHIFT_SCHEDULE = {
   morningEntryTime: "08:00",
   morningExitTime: "13:00",
-  afternoonEntryTime: "14:00",
+  afternoonEntryTime: "14:30",
   afternoonExitTime: "19:00",
   toleranceMinutes: 0
 };
+
+export const AFTERNOON_CHECKIN_EARLY_MINUTES = 30;
 
 export const WEEKLY_TOLERANCE_MAX_MINUTES = 9;

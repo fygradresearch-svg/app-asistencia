@@ -48,7 +48,7 @@ export function normalizeDaySchedules(input: DayScheduleInput[] | undefined) {
       hasExplicitMorning ? schedule.morningExitTime : "13:00"
     );
     const afternoonEntryTime = cleanTime(
-      hasExplicitAfternoon ? schedule.afternoonEntryTime : "14:00"
+      hasExplicitAfternoon ? schedule.afternoonEntryTime : "14:30"
     );
     const afternoonExitTime = cleanTime(
       hasExplicitAfternoon ? schedule.afternoonExitTime : schedule.exitTime

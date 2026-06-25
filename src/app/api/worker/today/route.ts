@@ -6,6 +6,7 @@ import { getBusinessDate, getBusinessTime, minutesFromTime } from "@/lib/dates";
 import { jsonError, parseNumber } from "@/lib/http";
 import { getWorkerByDni, isValidDni, normalizeDni } from "@/lib/worker-auth";
 import {
+  getAfternoonCheckInAvailableMinutes,
   getScheduleForWorker,
   getShiftForCheckIn,
   hasShift,
@@ -44,8 +45,13 @@ function getNextAction(
     }
 
     const currentMinutes = minutesFromTime(getBusinessTime(now).slice(0, 5));
-    const afternoonMinutes = minutesFromTime(schedule.afternoonEntryTime);
-    if (currentMinutes < afternoonMinutes) {
+    const afternoonAvailableMinutes = getAfternoonCheckInAvailableMinutes(
+      schedule.afternoonEntryTime
+    );
+    if (
+      afternoonAvailableMinutes !== null &&
+      currentMinutes < afternoonAvailableMinutes
+    ) {
       return { activeShift: "morning", nextAction: "check_in" };
     }
   }
@@ -59,13 +65,29 @@ function getNextAction(
     schedule.afternoonEntryTime
   ) {
     const currentMinutes = minutesFromTime(getBusinessTime(now).slice(0, 5));
-    const afternoonMinutes = minutesFromTime(schedule.afternoonEntryTime);
-    if (currentMinutes < afternoonMinutes) {
+    const afternoonAvailableMinutes = getAfternoonCheckInAvailableMinutes(
+      schedule.afternoonEntryTime
+    );
+    if (
+      afternoonAvailableMinutes !== null &&
+      currentMinutes < afternoonAvailableMinutes
+    ) {
       return { activeShift: "afternoon", nextAction: "waiting_afternoon" };
     }
   }
 
   if (hasAfternoon && !afternoon?.serverTime) {
+    const currentMinutes = minutesFromTime(getBusinessTime(now).slice(0, 5));
+    const afternoonAvailableMinutes = getAfternoonCheckInAvailableMinutes(
+      schedule.afternoonEntryTime
+    );
+    if (
+      afternoonAvailableMinutes !== null &&
+      currentMinutes < afternoonAvailableMinutes
+    ) {
+      return { activeShift: "afternoon", nextAction: "waiting_afternoon" };
+    }
+
     return { activeShift: "afternoon", nextAction: "check_in" };
   }
 

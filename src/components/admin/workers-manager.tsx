@@ -74,7 +74,7 @@ function defaultScheduleForm(enabled = false): WorkerScheduleForm {
       morningEntryTime: "08:00",
       morningExitTime: "13:00",
       afternoonEnabled: enabled,
-      afternoonEntryTime: "14:00",
+      afternoonEntryTime: "14:30",
       afternoonExitTime: "19:00"
     }))
   };

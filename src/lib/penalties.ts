@@ -13,9 +13,9 @@ export type ShiftPenalty = {
 export const ABSENCE_PENALTY: ShiftPenalty = {
   status: "absent",
   lateMinutes: 0,
-  fineAmountCents: 4000,
+  fineAmountCents: 2000,
   toleranceUsed: false,
-  penaltyLabel: "Falta - S/. 40.00"
+  penaltyLabel: "Falta - S/. 20.00"
 };
 
 export function evaluateShiftPenalty(

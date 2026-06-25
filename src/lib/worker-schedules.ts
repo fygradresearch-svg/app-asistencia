@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { workerDaySchedules } from "@/db/schema";
 import { getCurrentSchedule } from "@/lib/data";
 import { getBusinessTime, getBusinessWeekday, minutesFromTime } from "@/lib/dates";
-import { DEFAULT_SHIFT_SCHEDULE } from "@/lib/defaults";
+import { AFTERNOON_CHECKIN_EARLY_MINUTES, DEFAULT_SHIFT_SCHEDULE } from "@/lib/defaults";
 
 export type ShiftName = "morning" | "afternoon";
 
@@ -32,6 +32,27 @@ export function getShiftEntryTime(schedule: DayShiftSchedule, shift: ShiftName) 
   return shift === "morning" ? schedule.morningEntryTime : schedule.afternoonEntryTime;
 }
 
+export function getAfternoonCheckInAvailableFrom(afternoonEntryTime: string | null) {
+  if (!afternoonEntryTime) {
+    return null;
+  }
+
+  const entryMinutes = minutesFromTime(afternoonEntryTime.slice(0, 5));
+  const defaultAfternoonMinutes = minutesFromTime(DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime);
+  const availableMinutes =
+    entryMinutes > defaultAfternoonMinutes
+      ? entryMinutes - AFTERNOON_CHECKIN_EARLY_MINUTES
+      : entryMinutes;
+  const hours = Math.floor(availableMinutes / 60);
+  const minutes = availableMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+export function getAfternoonCheckInAvailableMinutes(afternoonEntryTime: string | null) {
+  const availableFrom = getAfternoonCheckInAvailableFrom(afternoonEntryTime);
+  return availableFrom ? minutesFromTime(availableFrom) : null;
+}
+
 export function getShiftForCheckIn(
   now: Date,
   schedule: DayShiftSchedule
@@ -48,13 +69,17 @@ export function getShiftForCheckIn(
   }
 
   if (!hasMorning && hasAfternoon) {
+    const availableMinutes = getAfternoonCheckInAvailableMinutes(schedule.afternoonEntryTime);
+    const currentMinutes = minutesFromTime(getBusinessTime(now).slice(0, 5));
+    if (availableMinutes !== null && currentMinutes < availableMinutes) {
+      return null;
+    }
     return "afternoon";
   }
 
   const currentMinutes = minutesFromTime(getBusinessTime(now).slice(0, 5));
-  return currentMinutes >= minutesFromTime(schedule.afternoonEntryTime ?? "00:00")
-    ? "afternoon"
-    : "morning";
+  const availableMinutes = getAfternoonCheckInAvailableMinutes(schedule.afternoonEntryTime);
+  return availableMinutes !== null && currentMinutes >= availableMinutes ? "afternoon" : "morning";
 }
 
 export async function getScheduleForWorker(

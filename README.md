@@ -32,13 +32,6 @@ ADMIN_SESSION_SECRET="cambiar_esto_en_produccion"
 npm run db:push
 ```
 
-Para flujo con migraciones:
-
-```bash
-npm run db:generate
-npm run db:migrate
-```
-
 ## Datos de prueba
 
 ```bash
@@ -48,9 +41,12 @@ npm run seed
 Esto inserta:
 
 - Admin: `admin` / `admin123`
-- Ubicacion: Oficina principal - Alameda Manuel Traverso 391, `-12.048947`, `-75.191307`, radio `50`
-- Horario base: manana `09:00` a `13:00`, tarde `15:00` a `19:00`, tolerancia `10`
-- Trabajadores: Juan Perez, Maria Lopez, Carlos Ramos
+- Ubicacion: Oficina principal - Alameda Manuel Traverso 391, `-12.048947`, `-75.191307`, radio `30`
+- Horario base: manana `08:00` a `13:00`, tarde `14:00` a `19:00`
+- Trabajadores:
+  - Juan Perez - DNI `12345678`
+  - Maria Lopez - DNI `87654321`
+  - Carlos Ramos - DNI `11223344`
 
 ## Desarrollo local
 
@@ -67,30 +63,31 @@ Abre:
 
 1. Entra a `/admin/login`.
 2. Inicia sesion con `admin` / `admin123`.
-3. Registra trabajadores con nombre completo.
-4. Copia el codigo generado de 4 digitos.
-5. Marca horario personalizado por dias al registrar o editalo despues desde el boton de reloj en la tabla.
-6. Configura turnos de manana y/o tarde para cada trabajador de lunes a viernes. Puedes dejar solo un turno activo o usar horarios como `09:00-11:00` y `15:00-17:00`.
-7. Configura ubicacion y horario general si necesitas cambiar los valores iniciales.
-8. Revisa asistencias en `/admin/reports`.
-9. Exporta el reporte desde el boton XLS.
+3. Registra trabajadores con nombre completo y DNI.
+4. Configura turnos de manana y/o tarde por trabajador.
+5. Configura ubicacion y horario general si necesitas cambiar los valores iniciales.
+6. Revisa asistencias en `/admin/reports`.
+7. Exporta el reporte desde el boton XLS.
 
-## Multas por tardanza
+## Tolerancia semanal
 
-Las multas se calculan con la hora de entrada de cada turno configurada para cada trabajador y dia. Con tolerancia `10`, la regla queda:
+Cada trabajador puede usar la tolerancia de 0 a 9 minutos de retraso una sola vez por semana por turno (lunes a domingo).
 
-- Entrada + 10 a entrada + 20 minutos: `S/. 10.00`
-- Entrada + 21 a entrada + 30 minutos: `S/. 20.00`
-- Entrada + 31 minutos o mas: `Falta - S/. 40.00`
+- Si aun no uso la tolerancia semanal del turno y llega con 0 a 9 minutos de retraso: asistencia valida sin multa.
+- Si ya uso la tolerancia semanal del turno:
+  - 1 a 20 minutos: S/. 10.00
+  - 21 a 30 minutos: S/. 20.00
+  - Mas de 30 minutos: Falta - S/. 40.00
+
+La tolerancia de manana y tarde se evalua de forma independiente.
 
 ## Flujo trabajador
 
 1. Entra a `/worker` desde el celular.
-2. Si no hay token local, la app redirige a `/worker/activate`.
-3. Ingresa el codigo de 4 digitos una sola vez.
-4. El navegador guarda el token del dispositivo.
-5. Marca entrada o salida.
-6. El backend valida GPS con Haversine y usa hora del servidor.
+2. Ingresa su DNI de 8 digitos.
+3. El sistema valida GPS y DNI.
+4. Si el DNI existe y esta dentro del radio de 30 metros, puede marcar entrada o salida.
+5. El backend valida GPS con Haversine y usa hora del servidor.
 
 ## Prueba de GPS
 
