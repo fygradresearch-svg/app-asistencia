@@ -91,3 +91,8 @@ export function formatTimeOnly(value: Date | string | null) {
     minute: "2-digit"
   }).format(date);
 }
+
+export function parseDateTimeInZone(dateStr: string, timeStr: string): Date {
+  const cleanTimeStr = timeStr.length === 5 ? `${timeStr}:00` : timeStr;
+  return new Date(`${dateStr}T${cleanTimeStr}-05:00`);
+}

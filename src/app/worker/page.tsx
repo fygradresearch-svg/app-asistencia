@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { WORKER_DNI_KEY } from "@/lib/client-storage";
 import { attendanceStatusLabels, shiftTypeLabels } from "@/lib/labels";
+import { getBrowserFingerprint } from "@/lib/client-fingerprint";
 
 type WorkerMe = {
   id: number;
@@ -209,10 +210,11 @@ export default function WorkerPage() {
     setError("");
     try {
       const position = await getCurrentPosition();
+      const fingerprint = getBrowserFingerprint();
       const response = await fetch(`/api/attendance/${type}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ dni: worker.dni, ...position }),
+        body: JSON.stringify({ dni: worker.dni, ...position, deviceFingerprint: fingerprint }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {

@@ -131,7 +131,13 @@ export async function getAttendanceReportRows(filters: AttendanceFilters) {
       lateMinutes: shiftAttendanceRecords.lateMinutes,
       fineAmountCents: shiftAttendanceRecords.fineAmountCents,
       toleranceUsed: shiftAttendanceRecords.toleranceUsed,
-      distanceMeters: shiftAttendanceRecords.distanceMeters
+      distanceMeters: shiftAttendanceRecords.distanceMeters,
+      deviceFingerprint: shiftAttendanceRecords.deviceFingerprint,
+      ipAddress: shiftAttendanceRecords.ipAddress,
+      userAgent: shiftAttendanceRecords.userAgent,
+      checkOutFingerprint: shiftAttendanceRecords.checkOutFingerprint,
+      checkOutIp: shiftAttendanceRecords.checkOutIp,
+      checkOutUserAgent: shiftAttendanceRecords.checkOutUserAgent
     })
     .from(shiftAttendanceRecords)
     .innerJoin(workers, eq(workers.id, shiftAttendanceRecords.workerId));

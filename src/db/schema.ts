@@ -118,6 +118,12 @@ export const shiftAttendanceRecords = pgTable(
     checkOutLatitude: doublePrecision("check_out_latitude"),
     checkOutLongitude: doublePrecision("check_out_longitude"),
     checkOutDistanceMeters: doublePrecision("check_out_distance_meters"),
+    deviceFingerprint: text("device_fingerprint"),
+    ipAddress: varchar("ip_address", { length: 45 }),
+    userAgent: text("user_agent"),
+    checkOutFingerprint: text("check_out_fingerprint"),
+    checkOutIp: varchar("check_out_ip", { length: 45 }),
+    checkOutUserAgent: text("check_out_user_agent"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
   },
@@ -142,8 +148,35 @@ export const attendanceAttempts = pgTable("attendance_attempts", {
   gpsStatus: gpsStatusEnum("gps_status").notNull(),
   accepted: boolean("accepted").default(false).notNull(),
   reason: text("reason"),
+  deviceFingerprint: text("device_fingerprint"),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+export const workerScheduleOverrides = pgTable(
+  "worker_schedule_overrides",
+  {
+    id: serial("id").primaryKey(),
+    workerId: integer("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    date: date("date", { mode: "string" }).notNull(),
+    morningEntryTime: time("morning_entry_time"),
+    morningExitTime: time("morning_exit_time"),
+    afternoonEntryTime: time("afternoon_entry_time"),
+    afternoonExitTime: time("afternoon_exit_time"),
+    toleranceMinutes: integer("tolerance_minutes").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    workerDateUnique: uniqueIndex("worker_schedule_override_date_unique").on(
+      table.workerId,
+      table.date
+    )
+  })
+);
 
 export type WorkerStatus = (typeof workerStatusEnum.enumValues)[number];
 export type ShiftType = (typeof shiftTypeEnum.enumValues)[number];
@@ -154,3 +187,4 @@ export type AttemptType = (typeof attemptTypeEnum.enumValues)[number];
 export type Worker = typeof workers.$inferSelect;
 export type WorkerDaySchedule = typeof workerDaySchedules.$inferSelect;
 export type ShiftAttendanceRecord = typeof shiftAttendanceRecords.$inferSelect;
+export type WorkerScheduleOverride = typeof workerScheduleOverrides.$inferSelect;

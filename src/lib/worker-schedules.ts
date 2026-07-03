@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { workerDaySchedules } from "@/db/schema";
+import { workerDaySchedules, workerScheduleOverrides } from "@/db/schema";
 import { getCurrentSchedule } from "@/lib/data";
-import { getBusinessTime, getBusinessWeekday, minutesFromTime } from "@/lib/dates";
+import { getBusinessDate, getBusinessTime, getBusinessWeekday, minutesFromTime } from "@/lib/dates";
 import { AFTERNOON_CHECKIN_EARLY_MINUTES, DEFAULT_SHIFT_SCHEDULE } from "@/lib/defaults";
 
 export type ShiftName = "morning" | "afternoon";
@@ -88,6 +88,28 @@ export async function getScheduleForWorker(
 ): Promise<DayShiftSchedule | null> {
   if (!worker) {
     return null;
+  }
+
+  const dateStr = getBusinessDate(date);
+  const [override] = await db
+    .select()
+    .from(workerScheduleOverrides)
+    .where(
+      and(
+        eq(workerScheduleOverrides.workerId, worker.id),
+        eq(workerScheduleOverrides.date, dateStr)
+      )
+    )
+    .limit(1);
+
+  if (override) {
+    return {
+      morningEntryTime: override.morningEntryTime,
+      morningExitTime: override.morningExitTime,
+      afternoonEntryTime: override.afternoonEntryTime,
+      afternoonExitTime: override.afternoonExitTime,
+      toleranceMinutes: override.toleranceMinutes
+    };
   }
 
   const weekday = getBusinessWeekday(date);

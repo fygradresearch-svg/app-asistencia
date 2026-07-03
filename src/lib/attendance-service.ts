@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, ne, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   attendanceAttempts,
@@ -26,6 +26,9 @@ type MarkAttendanceInput = {
   type: AttemptType;
   latitude: number;
   longitude: number;
+  deviceFingerprint?: string;
+  ipAddress?: string;
+  userAgent?: string;
 };
 
 type MarkAttendanceResult = {
@@ -87,7 +90,10 @@ export async function markAttendance({
   dni,
   type,
   latitude,
-  longitude
+  longitude,
+  deviceFingerprint,
+  ipAddress,
+  userAgent
 }: MarkAttendanceInput): Promise<MarkAttendanceResult> {
   const normalizedDni = normalizeDni(dni);
 
@@ -146,7 +152,10 @@ export async function markAttendance({
       distanceMeters,
       gpsStatus: "outside_zone",
       accepted: false,
-      reason: "outside_zone"
+      reason: "outside_zone",
+      deviceFingerprint: deviceFingerprint || null,
+      ipAddress: ipAddress || null,
+      userAgent: userAgent || null
     });
 
     return {
@@ -156,6 +165,39 @@ export async function markAttendance({
         distanceMeters
       }
     };
+  }
+
+  // Short interval validation (5 minutes) for browser fingerprint to prevent proxy attendance
+  if (deviceFingerprint) {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const [recentAttendance] = await db
+      .select({ id: shiftAttendanceRecords.id })
+      .from(shiftAttendanceRecords)
+      .where(
+        and(
+          or(
+            and(
+              eq(shiftAttendanceRecords.deviceFingerprint, deviceFingerprint),
+              gte(shiftAttendanceRecords.serverTime, fiveMinutesAgo)
+            ),
+            and(
+              eq(shiftAttendanceRecords.checkOutFingerprint, deviceFingerprint),
+              gte(shiftAttendanceRecords.checkOutTime, fiveMinutesAgo)
+            )
+          ),
+          ne(shiftAttendanceRecords.workerId, worker.id)
+        )
+      )
+      .limit(1);
+
+    if (recentAttendance) {
+      return {
+        status: 403,
+        body: {
+          error: "Este dispositivo ya fue utilizado para registrar otra asistencia recientemente. Intente en unos minutos."
+        }
+      };
+    }
   }
 
   const now = new Date();
@@ -204,10 +246,13 @@ export async function markAttendance({
       longitude,
       distanceMeters,
       gpsStatus: "valid",
-      accepted: true
+      accepted: true,
+      deviceFingerprint: deviceFingerprint || null,
+      ipAddress: ipAddress || null,
+      userAgent: userAgent || null
     });
 
-    const weeklyToleranceUsed = await hasWeeklyToleranceBeenUsed(worker.id, shift, now);
+    const weeklyToleranceUsed = await hasWeeklyToleranceBeenUsed(worker.id, now);
     const penalty = evaluateShiftPenalty(now, shiftEntryTime, weeklyToleranceUsed);
 
     const [record] = await db
@@ -225,6 +270,9 @@ export async function markAttendance({
         lateMinutes: penalty.lateMinutes,
         fineAmountCents: penalty.fineAmountCents,
         toleranceUsed: penalty.toleranceUsed,
+        deviceFingerprint: deviceFingerprint || null,
+        ipAddress: ipAddress || null,
+        userAgent: userAgent || null,
         updatedAt: now
       })
       .returning();
@@ -263,7 +311,10 @@ export async function markAttendance({
     longitude,
     distanceMeters,
     gpsStatus: "valid",
-    accepted: true
+    accepted: true,
+    deviceFingerprint: deviceFingerprint || null,
+    ipAddress: ipAddress || null,
+    userAgent: userAgent || null
   });
 
   const [record] = await db
@@ -273,6 +324,9 @@ export async function markAttendance({
       checkOutLatitude: latitude,
       checkOutLongitude: longitude,
       checkOutDistanceMeters: distanceMeters,
+      checkOutFingerprint: deviceFingerprint || null,
+      checkOutIp: ipAddress || null,
+      checkOutUserAgent: userAgent || null,
       updatedAt: now
     })
     .where(eq(shiftAttendanceRecords.id, existingShiftRecord.id))

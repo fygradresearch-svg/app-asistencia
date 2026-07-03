@@ -55,19 +55,12 @@ export function evaluateShiftPenalty(
     };
   }
 
-  if (lateMinutes <= 30) {
-    return {
-      status: "late",
-      lateMinutes,
-      fineAmountCents: 2000,
-      toleranceUsed: false,
-      penaltyLabel: "S/. 20.00"
-    };
-  }
-
   return {
-    ...ABSENCE_PENALTY,
-    lateMinutes
+    status: "late",
+    lateMinutes,
+    fineAmountCents: 2000,
+    toleranceUsed: false,
+    penaltyLabel: "S/. 20.00"
   };
 }
 
