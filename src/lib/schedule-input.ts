@@ -59,7 +59,7 @@ export function normalizeDaySchedules(input: DayScheduleInput[] | undefined) {
     if (
       weekday === null ||
       weekday < 1 ||
-      weekday > 5 ||
+      weekday > 6 ||
       !Number.isInteger(weekday) ||
       seen.has(weekday) ||
       (!hasMorning && !hasAfternoon) ||

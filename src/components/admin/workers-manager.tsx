@@ -60,7 +60,8 @@ const weekdays = [
   { weekday: 2, label: "Martes", shortLabel: "Mar" },
   { weekday: 3, label: "Miercoles", shortLabel: "Mie" },
   { weekday: 4, label: "Jueves", shortLabel: "Jue" },
-  { weekday: 5, label: "Viernes", shortLabel: "Vie" }
+  { weekday: 5, label: "Viernes", shortLabel: "Vie" },
+  { weekday: 6, label: "Sabado", shortLabel:"Sab"}
 ];
 
 function defaultScheduleForm(enabled = false): WorkerScheduleForm {
