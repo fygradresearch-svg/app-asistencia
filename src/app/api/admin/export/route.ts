@@ -7,35 +7,9 @@ import {
 import { formatTimeOnly } from "@/lib/dates";
 import { jsonError } from "@/lib/http";
 import { attendanceStatusLabels, shiftTypeLabels } from "@/lib/labels";
+import { createWorkbookBuffer } from "@/lib/xlsx";
 
 type CellValue = string | number | null | undefined;
-
-function escapeHtml(value: CellValue) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function toXls(title: string, headers: string[], rows: CellValue[][]) {
-  const head = headers
-    .map((header) => `<th>${escapeHtml(header)}</th>`)
-    .join("");
-  const body = rows
-    .map(
-      (row) =>
-        `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`
-    )
-    .join("");
-
-  return `<h2>${escapeHtml(title)}</h2>
-<table>
-  <thead><tr>${head}</tr></thead>
-  <tbody>${body}</tbody>
-</table>`;
-}
 
 export async function GET(request: Request) {
   const session = await requireAdminSession();
@@ -58,69 +32,70 @@ export async function GET(request: Request) {
     getWorkerAttendanceTotals(filters)
   ]);
 
-  const detailTable = toXls(
-    "Detalle por turno",
-    [
-      "Nombre completo",
-      "DNI",
-      "Fecha",
-      "Turno",
-      "Entrada",
-      "Salida",
-      "Minutos de retraso",
-      "Estado",
-      "Multa aplicada",
-      "Tolerancia utilizada",
-      "Distancia (m)"
-    ],
-    rows.map((row) => [
-      row.workerName,
-      row.workerDni,
-      row.date,
-      shiftTypeLabels[row.shiftType] ?? row.shiftType,
-      formatTimeOnly(row.serverTime),
-      formatTimeOnly(row.checkOutTime),
-      row.lateMinutes,
-      attendanceStatusLabels[row.status] ?? row.status,
-      formatReportFineLabel(row.fineAmountCents),
-      row.toleranceUsed ? "Si" : "No",
-      Math.round(row.distanceMeters)
-    ])
-  );
+  const detailHeaders = [
+    "Nombre completo",
+    "DNI",
+    "Fecha",
+    "Turno",
+    "Hora programada",
+    "Entrada",
+    "Salida",
+    "Minutos de retraso",
+    "Estado",
+    "Falto turno",
+    "Multa aplicada",
+    "Tolerancia utilizada",
+    "Distancia (m)"
+  ];
 
-  const totalsTable = toXls(
-    "Totales por trabajador",
-    ["Nombre completo", "DNI", "Total tardanzas", "Total faltas", "Total multas"],
-    totals.map((total) => [
-      total.workerName,
-      total.workerDni,
-      total.totalLate,
-      total.totalAbsent,
-      `S/. ${(total.totalFinesCents / 100).toFixed(2)}`
-    ])
-  );
+  const detailRows = rows.map((row) => [
+    row.workerName,
+    row.workerDni,
+    row.date,
+    shiftTypeLabels[row.shiftType] ?? row.shiftType,
+    row.scheduledEntryTime?.slice(0, 5) ?? "",
+    formatTimeOnly(row.serverTime),
+    formatTimeOnly(row.checkOutTime),
+    row.lateMinutes,
+    attendanceStatusLabels[row.status] ?? row.status,
+    row.status === "absent" ? "Si" : "No",
+    formatReportFineLabel(row.fineAmountCents),
+    row.toleranceUsed ? "Si" : "No",
+    Math.round(row.distanceMeters)
+  ]);
 
-  const xls = `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; margin-bottom: 24px; }
-      th { background: #e2e8f0; font-weight: bold; }
-      th, td { border: 1px solid #94a3b8; padding: 6px 8px; white-space: nowrap; }
-      h2 { font-family: Arial, sans-serif; font-size: 14px; }
-    </style>
-  </head>
-  <body>
-    ${detailTable}
-    ${totalsTable}
-  </body>
-</html>`;
+  const totalHeaders = [
+    "Nombre completo",
+    "DNI",
+    "Total tardanzas",
+    "Total faltas",
+    "Total multas"
+  ];
 
-  return new Response(xls, {
+  const totalRows = totals.map((total) => [
+    total.workerName,
+    total.workerDni,
+    total.totalLate,
+    total.totalAbsent,
+    `S/. ${(total.totalFinesCents / 100).toFixed(2)}`
+  ]);
+
+  const workbook = createWorkbookBuffer([
+    {
+      name: "Detalle por turno",
+      rows: [detailHeaders, ...detailRows] satisfies CellValue[][]
+    },
+    {
+      name: "Totales por trabajador",
+      rows: [totalHeaders, ...totalRows] satisfies CellValue[][]
+    }
+  ]);
+
+  return new Response(workbook, {
     headers: {
-      "content-type": "application/vnd.ms-excel; charset=utf-8",
-      "content-disposition": `attachment; filename="reporte-asistencia.xls"`
+      "content-type":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "content-disposition": `attachment; filename="reporte-asistencia.xlsx"`
     }
   });
 }
