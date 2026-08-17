@@ -40,8 +40,8 @@ export function getAfternoonCheckInAvailableFrom(afternoonEntryTime: string | nu
   const entryMinutes = minutesFromTime(afternoonEntryTime.slice(0, 5));
   const defaultAfternoonMinutes = minutesFromTime(DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime);
   const availableMinutes =
-    entryMinutes > defaultAfternoonMinutes
-      ? entryMinutes - AFTERNOON_CHECKIN_EARLY_MINUTES
+    entryMinutes >= defaultAfternoonMinutes - AFTERNOON_CHECKIN_EARLY_MINUTES
+      ? Math.max(0, entryMinutes - AFTERNOON_CHECKIN_EARLY_MINUTES)
       : entryMinutes;
   const hours = Math.floor(availableMinutes / 60);
   const minutes = availableMinutes % 60;

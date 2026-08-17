@@ -21,6 +21,6 @@ export const DEFAULT_SHIFT_SCHEDULE = {
   toleranceMinutes: 0
 };
 
-export const AFTERNOON_CHECKIN_EARLY_MINUTES = 30;
+export const AFTERNOON_CHECKIN_EARLY_MINUTES = 60;
 
 export const WEEKLY_TOLERANCE_MAX_MINUTES = 9;
