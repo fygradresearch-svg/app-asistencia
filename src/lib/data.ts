@@ -1,4 +1,4 @@
-import { and, count, eq, gte, inArray, lte } from "drizzle-orm";
+import {and, count, eq, gte, inArray, lte, sql} from "drizzle-orm";
 import { db } from "@/db";
 import {
   locations,
