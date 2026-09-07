@@ -4,6 +4,11 @@ export const workerStatusLabels: Record<string, string> = {
   inactive: "Inactivo"
 };
 
+export const workerTypeLabels: Record<string, string> = {
+  worker: "Trabajador",
+  intern: "Practicante"
+};
+
 export const shiftTypeLabels: Record<string, string> = {
   morning: "Manana",
   afternoon: "Tarde"

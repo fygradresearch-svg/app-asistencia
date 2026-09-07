@@ -80,7 +80,9 @@ function penaltyMessage(shift: ShiftName, penalty: ReturnType<typeof evaluateShi
   }
 
   if (penalty.status === "late") {
-    return `Entrada de la ${shiftLabel} registrada con tardanza. Multa: ${penalty.penaltyLabel}.`;
+    return penalty.fineAmountCents
+      ? `Entrada de la ${shiftLabel} registrada con tardanza. Multa: ${penalty.penaltyLabel}.`
+      : `Entrada de la ${shiftLabel} registrada con tardanza.`;
   }
 
   return `Entrada de la ${shiftLabel} registrada como falta.`;
@@ -253,7 +255,12 @@ export async function markAttendance({
     });
 
     const weeklyToleranceUsed = await hasWeeklyToleranceBeenUsed(worker.id, now);
-    const penalty = evaluateShiftPenalty(now, shiftEntryTime, weeklyToleranceUsed);
+    const penalty = evaluateShiftPenalty(
+      now,
+      shiftEntryTime,
+      weeklyToleranceUsed,
+      worker.workerType !== "intern"
+    );
 
     const [record] = await db
       .insert(shiftAttendanceRecords)
@@ -410,7 +417,8 @@ export async function verifyWorkerAccess(dni: string, latitude: number, longitud
         id: worker.id,
         fullName: worker.fullName,
         dni: worker.dni,
-        status: worker.status
+        status: worker.status,
+        workerType: worker.workerType
       },
       distanceMeters
     }

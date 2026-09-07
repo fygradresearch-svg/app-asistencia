@@ -19,6 +19,8 @@ export const workerStatusEnum = pgEnum("worker_status", [
   "inactive"
 ]);
 
+export const workerTypeEnum = pgEnum("worker_type", ["worker", "intern"]);
+
 export const shiftTypeEnum = pgEnum("shift_type", ["morning", "afternoon"]);
 
 export const shiftAttendanceStatusEnum = pgEnum("shift_attendance_status", [
@@ -44,6 +46,7 @@ export const workers = pgTable("workers", {
   fullName: varchar("full_name", { length: 180 }).notNull(),
   dni: varchar("dni", { length: 8 }).notNull().unique(),
   status: workerStatusEnum("status").default("active").notNull(),
+  workerType: workerTypeEnum("worker_type").default("worker").notNull(),
   scheduleEntryTime: time("schedule_entry_time"),
   scheduleExitTime: time("schedule_exit_time"),
   scheduleToleranceMinutes: integer("schedule_tolerance_minutes"),
@@ -179,6 +182,7 @@ export const workerScheduleOverrides = pgTable(
 );
 
 export type WorkerStatus = (typeof workerStatusEnum.enumValues)[number];
+export type WorkerType = (typeof workerTypeEnum.enumValues)[number];
 export type ShiftType = (typeof shiftTypeEnum.enumValues)[number];
 export type ShiftAttendanceStatus = (typeof shiftAttendanceStatusEnum.enumValues)[number];
 export type GpsStatus = (typeof gpsStatusEnum.enumValues)[number];

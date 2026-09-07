@@ -21,7 +21,8 @@ export const ABSENCE_PENALTY: ShiftPenalty = {
 export function evaluateShiftPenalty(
   now: Date,
   entryTime: string,
-  weeklyToleranceUsed: boolean
+  weeklyToleranceUsed: boolean,
+  appliesFine = true
 ): ShiftPenalty {
   const lateMinutes = Math.max(0, minutesAfterEntry(now, entryTime));
 
@@ -49,18 +50,18 @@ export function evaluateShiftPenalty(
     return {
       status: "late",
       lateMinutes,
-      fineAmountCents: 1000,
+      fineAmountCents: appliesFine ? 1000 : 0,
       toleranceUsed: false,
-      penaltyLabel: "S/. 10.00"
+      penaltyLabel: appliesFine ? "S/. 10.00" : "Sin multa"
     };
   }
 
   return {
     status: "late",
     lateMinutes,
-    fineAmountCents: 2000,
+    fineAmountCents: appliesFine ? 2000 : 0,
     toleranceUsed: false,
-    penaltyLabel: "S/. 20.00"
+    penaltyLabel: appliesFine ? "S/. 20.00" : "Sin multa"
   };
 }
 

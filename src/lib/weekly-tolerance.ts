@@ -34,21 +34,30 @@ export async function recalculateWeeklyAttendance(
 ) {
   const weekStart = getWeekStartDate(date);
   const weekEnd = getWeekEndDate(date);
+  await recalculateAttendanceRange(workerId, weekStart, weekEnd);
+}
 
-  // Fetch all attendance records for the worker in that week across all shifts, sorted chronologically by serverTime
+export async function recalculateAllAttendanceForWorker(workerId: number) {
+  await recalculateAttendanceRange(workerId);
+}
+
+async function recalculateAttendanceRange(workerId: number, from?: string, to?: string) {
+  const conditions = [eq(shiftAttendanceRecords.workerId, workerId)];
+
+  if (from) {
+    conditions.push(gte(shiftAttendanceRecords.date, from));
+  }
+
+  if (to) {
+    conditions.push(lte(shiftAttendanceRecords.date, to));
+  }
+
   const records = await db
     .select()
     .from(shiftAttendanceRecords)
-    .where(
-      and(
-        eq(shiftAttendanceRecords.workerId, workerId),
-        gte(shiftAttendanceRecords.date, weekStart),
-        lte(shiftAttendanceRecords.date, weekEnd)
-      )
-    )
-    .orderBy(shiftAttendanceRecords.serverTime);
+    .where(and(...conditions))
+    .orderBy(shiftAttendanceRecords.date, shiftAttendanceRecords.serverTime);
 
-  // Fetch worker schedule settings
   const [worker] = await db
     .select()
     .from(workers)
@@ -58,9 +67,17 @@ export async function recalculateWeeklyAttendance(
   if (!worker) return;
 
   let toleranceUsedInWeek = false;
+  let currentWeekStart: string | null = null;
 
   for (const record of records) {
     const recordDate = new Date(record.serverTime);
+    const recordWeekStart = getWeekStartDate(recordDate);
+
+    if (currentWeekStart !== recordWeekStart) {
+      currentWeekStart = recordWeekStart;
+      toleranceUsedInWeek = false;
+    }
+
     const schedule = await getScheduleForWorker(worker, recordDate);
 
     if (!schedule) continue;
@@ -68,8 +85,12 @@ export async function recalculateWeeklyAttendance(
     const entryTime = getShiftEntryTime(schedule, record.shiftType);
     if (!entryTime) continue;
 
-    // Recalculate using the current state of toleranceUsedInWeek
-    const penalty = evaluateShiftPenalty(record.serverTime, entryTime, toleranceUsedInWeek);
+    const penalty = evaluateShiftPenalty(
+      record.serverTime,
+      entryTime,
+      toleranceUsedInWeek,
+      worker.workerType !== "intern"
+    );
 
     if (penalty.toleranceUsed) {
       toleranceUsedInWeek = true;

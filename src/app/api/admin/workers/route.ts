@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { workerDaySchedules, workers } from "@/db/schema";
+import { workerDaySchedules, workers, type WorkerType } from "@/db/schema";
 import { requireAdminSession } from "@/lib/auth";
 import { isValidDni, normalizeDni } from "@/lib/worker-auth";
 import { jsonError } from "@/lib/http";
@@ -10,6 +10,7 @@ import { normalizeDaySchedules, type DayScheduleInput } from "@/lib/schedule-inp
 type CreateWorkerBody = {
   fullName?: string;
   dni?: string;
+  workerType?: WorkerType;
   scheduleEntryTime?: string | null;
   scheduleExitTime?: string | null;
   scheduleToleranceMinutes?: unknown;
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as CreateWorkerBody | null;
   const fullName = body?.fullName?.trim();
   const dni = normalizeDni(body?.dni);
+  const workerType = body?.workerType === "intern" ? "intern" : "worker";
   let daySchedules: ReturnType<typeof normalizeDaySchedules> = [];
 
   try {
@@ -94,6 +96,7 @@ export async function POST(request: Request) {
       fullName,
       dni,
       status: "active",
+      workerType,
       scheduleEntryTime: hasCustomSchedule ? scheduleEntryTime : null,
       scheduleExitTime: hasCustomSchedule ? scheduleExitTime : null,
       scheduleToleranceMinutes: hasCustomSchedule

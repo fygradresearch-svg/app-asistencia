@@ -11,7 +11,7 @@ import {
   UserX,
   X
 } from "lucide-react";
-import { workerStatusLabels } from "@/lib/labels";
+import { workerStatusLabels, workerTypeLabels } from "@/lib/labels";
 
 type WorkerDaySchedule = {
   id?: number;
@@ -31,6 +31,7 @@ type WorkerRow = {
   fullName: string;
   dni: string;
   status: "pending" | "active" | "inactive";
+  workerType: "worker" | "intern";
   scheduleEntryTime: string | null;
   scheduleExitTime: string | null;
   scheduleToleranceMinutes: number | null;
@@ -100,6 +101,19 @@ function statusBadge(status: WorkerRow["status"]) {
   return (
     <span className={`rounded-md px-2 py-1 text-xs font-semibold ${styles[status]}`}>
       {workerStatusLabels[status]}
+    </span>
+  );
+}
+
+function typeBadge(workerType: WorkerRow["workerType"]) {
+  const styles = {
+    worker: "bg-sky-50 text-sky-800",
+    intern: "bg-violet-50 text-violet-800"
+  };
+
+  return (
+    <span className={`rounded-md px-2 py-1 text-xs font-semibold ${styles[workerType]}`}>
+      {workerTypeLabels[workerType]}
     </span>
   );
 }
@@ -400,6 +414,7 @@ export function WorkersManager() {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [fullName, setFullName] = useState("");
   const [dni, setDni] = useState("");
+  const [workerType, setWorkerType] = useState<WorkerRow["workerType"]>("worker");
   const [createSchedule, setCreateSchedule] = useState<WorkerScheduleForm>(
     defaultScheduleForm(false)
   );
@@ -410,6 +425,7 @@ export function WorkersManager() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [updatingWorkerTypeId, setUpdatingWorkerTypeId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -440,6 +456,7 @@ export function WorkersManager() {
       body: JSON.stringify({
         fullName,
         dni,
+        workerType,
         ...(createSchedule.useCustomSchedule
           ? { daySchedules: serializeDaySchedules(createSchedule) }
           : {})
@@ -455,6 +472,7 @@ export function WorkersManager() {
 
     setFullName("");
     setDni("");
+    setWorkerType("worker");
     setCreateSchedule(defaultScheduleForm(false));
     setMessage(`Trabajador registrado: ${data.fullName} (${data.dni}).`);
     await loadWorkers();
@@ -474,6 +492,28 @@ export function WorkersManager() {
       return;
     }
 
+    await loadWorkers();
+  }
+
+  async function updateWorkerType(worker: WorkerRow, nextWorkerType: WorkerRow["workerType"]) {
+    setUpdatingWorkerTypeId(worker.id);
+    setError("");
+    setMessage("");
+
+    const response = await fetch(`/api/admin/workers/${worker.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workerType: nextWorkerType })
+    });
+    const data = await response.json().catch(() => ({}));
+    setUpdatingWorkerTypeId(null);
+
+    if (!response.ok) {
+      setError(data.error ?? "No se pudo actualizar el tipo de trabajador.");
+      return;
+    }
+
+    setMessage(`Tipo actualizado para ${worker.fullName}.`);
     await loadWorkers();
   }
 
@@ -549,7 +589,7 @@ export function WorkersManager() {
       </div>
 
       <section className="mb-6 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
-        <form onSubmit={submit} className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
+        <form onSubmit={submit} className="grid gap-4 lg:grid-cols-[1fr_1fr_220px_auto]">
           <label>
             <span className="text-sm font-medium text-slate-700">Nombre completo</span>
             <input
@@ -569,6 +609,17 @@ export function WorkersManager() {
               inputMode="numeric"
               maxLength={8}
             />
+          </label>
+          <label>
+            <span className="text-sm font-medium text-slate-700">Tipo</span>
+            <select
+              value={workerType}
+              onChange={(event) => setWorkerType(event.target.value as WorkerRow["workerType"])}
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            >
+              <option value="worker">Trabajador</option>
+              <option value="intern">Practicante</option>
+            </select>
           </label>
           <div className="lg:self-end">
             <button
@@ -627,6 +678,7 @@ export function WorkersManager() {
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Nombre completo</th>
                 <th className="px-4 py-3">DNI</th>
+                <th className="px-4 py-3">Tipo</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Horario</th>
                 <th className="px-4 py-3">Creacion</th>
@@ -636,13 +688,13 @@ export function WorkersManager() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={7}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={8}>
                     Cargando...
                   </td>
                 </tr>
               ) : workers.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={7}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={8}>
                     No hay trabajadores registrados.
                   </td>
                 </tr>
@@ -655,6 +707,25 @@ export function WorkersManager() {
                     </td>
                     <td className="px-4 py-3 font-mono font-semibold text-slate-950">
                       {worker.dni}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-2">
+                        {typeBadge(worker.workerType)}
+                        <select
+                          value={worker.workerType}
+                          onChange={(event) =>
+                            void updateWorkerType(
+                              worker,
+                              event.target.value as WorkerRow["workerType"]
+                            )
+                          }
+                          disabled={updatingWorkerTypeId === worker.id}
+                          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:opacity-60"
+                        >
+                          <option value="worker">Trabajador</option>
+                          <option value="intern">Practicante</option>
+                        </select>
+                      </div>
                     </td>
                     <td className="px-4 py-3">{statusBadge(worker.status)}</td>
                     <td className="px-4 py-3 text-slate-700">{scheduleLabel(worker)}</td>

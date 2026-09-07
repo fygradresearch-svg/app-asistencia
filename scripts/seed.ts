@@ -74,6 +74,7 @@ async function seedWorkers(db: AppDb) {
       fullName: worker.fullName,
       dni: worker.dni,
       status: "active",
+      workerType: "worker",
       updatedAt: new Date()
     });
   }

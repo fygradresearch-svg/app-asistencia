@@ -172,7 +172,8 @@ export async function GET(request: Request) {
       id: worker.id,
       fullName: worker.fullName,
       dni: worker.dni,
-      status: worker.status
+      status: worker.status,
+      workerType: worker.workerType
     },
     date: today,
     serverTime: getBusinessTime(),
