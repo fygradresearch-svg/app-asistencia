@@ -1,101 +1,23 @@
 import { requireAdminSession } from "@/lib/auth";
-import {
-  formatReportFineLabel,
-  getAttendanceReportRows,
-  getWorkerAttendanceTotals
-} from "@/lib/data";
-import { formatTimeOnly } from "@/lib/dates";
+import { getAttendanceReportRows } from "@/lib/data";
+import { formatTimeOnly, getWeekEndDate, getWeekStartDate } from "@/lib/dates";
 import { jsonError } from "@/lib/http";
-import { attendanceStatusLabels, shiftTypeLabels } from "@/lib/labels";
+import { attendanceStatusLabels, checkoutSourceLabels, shiftTypeLabels } from "@/lib/labels";
 import { createWorkbookBuffer } from "@/lib/xlsx";
 
-type CellValue = string | number | null | undefined;
+type Cell = string | number | null | undefined;
+const mins=(v:number)=>`${Math.floor(v/60)}:${String(v%60).padStart(2,"0")}`;
+function uniqueSheetName(name:string, used:Set<string>){const base=(name.replace(/[\\/*?:\[\]]/g," ").trim()||"Trabajador").slice(0,31);let candidate=base,i=2;while(used.has(candidate)){candidate=`${base.slice(0,28)} ${i++}`;}used.add(candidate);return candidate;}
 
 export async function GET(request: Request) {
-  const session = await requireAdminSession();
-  if (!session) {
-    return jsonError("No autorizado.", 401);
-  }
-
-  const url = new URL(request.url);
-  const workerIdValue = url.searchParams.get("workerId");
-  const workerId = workerIdValue ? Number(workerIdValue) : null;
-  const filters = {
-    date: url.searchParams.get("date"),
-    from: url.searchParams.get("from"),
-    to: url.searchParams.get("to"),
-    workerId: Number.isInteger(workerId) ? workerId : null
-  };
-
-  const [rows, totals] = await Promise.all([
-    getAttendanceReportRows(filters),
-    getWorkerAttendanceTotals(filters)
-  ]);
-
-  const detailHeaders = [
-    "Nombre completo",
-    "DNI",
-    "Fecha",
-    "Turno",
-    "Hora programada",
-    "Entrada",
-    "Salida",
-    "Minutos de retraso",
-    "Estado",
-    "Falto turno",
-    "Multa aplicada",
-    "Tolerancia utilizada",
-    "Distancia (m)"
-  ];
-
-  const detailRows = rows.map((row) => [
-    row.workerName,
-    row.workerDni,
-    row.date,
-    shiftTypeLabels[row.shiftType] ?? row.shiftType,
-    row.scheduledEntryTime?.slice(0, 5) ?? "",
-    formatTimeOnly(row.serverTime),
-    formatTimeOnly(row.checkOutTime),
-    row.lateMinutes,
-    attendanceStatusLabels[row.status] ?? row.status,
-    row.status === "absent" ? "Si" : "No",
-    formatReportFineLabel(row.fineAmountCents),
-    row.toleranceUsed ? "Si" : "No",
-    Math.round(row.distanceMeters)
-  ]);
-
-  const totalHeaders = [
-    "Nombre completo",
-    "DNI",
-    "Total tardanzas",
-    "Total faltas",
-    "Total multas"
-  ];
-
-  const totalRows = totals.map((total) => [
-    total.workerName,
-    total.workerDni,
-    total.totalLate,
-    total.totalAbsent,
-    `S/. ${(total.totalFinesCents / 100).toFixed(2)}`
-  ]);
-
-  const workbook = createWorkbookBuffer([
-    {
-      name: "Detalle por turno",
-      rows: [detailHeaders, ...detailRows] satisfies CellValue[][]
-    },
-    {
-      name: "Totales por trabajador",
-      rows: [totalHeaders, ...totalRows] satisfies CellValue[][]
-    }
-  ]);
-
-  return new Response(workbook, {
-    headers: {
-      "content-type":
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "content-disposition": `attachment; filename="reporte-asistencia.xlsx"`
-    }
-  });
+  if (!await requireAdminSession()) return jsonError("No autorizado.", 401);
+  const url=new URL(request.url); const workerIdValue=url.searchParams.get("workerId"); const workerId=workerIdValue?Number(workerIdValue):null;
+  const filters={date:url.searchParams.get("date"),from:url.searchParams.get("from"),to:url.searchParams.get("to"),workerId:Number.isInteger(workerId)?workerId:null};
+  const rows=await getAttendanceReportRows(filters); const period=`${filters.date??filters.from??"Todos"} - ${filters.date??filters.to??"Actual"}`;
+  const byWorker=new Map<number,typeof rows>(); for(const row of rows){const values=byWorker.get(row.workerId)??[];values.push(row);byWorker.set(row.workerId,values);}
+  const summaryRows:[Cell,Cell,Cell,Cell,Cell,Cell,Cell,Cell,Cell,Cell,Cell][]=[];
+  for(const workerRows of byWorker.values()){const first=workerRows[0];const sum=workerRows.reduce((a,r)=>({scheduled:a.scheduled+r.scheduledMinutes,worked:a.worked+r.workedMinutes,missing:a.missing+r.missingMinutes,additional:a.additional+r.additionalMinutes,late:a.late+(r.lateMinutes>0?1:0),tolerance:a.tolerance+(r.toleranceUsed?1:0),absent:a.absent+(r.status==="absent"?1:0),automatic:a.automatic+(r.checkoutSource==="automatic"?1:0),fines:a.fines+r.fineAmountCents}),{scheduled:0,worked:0,missing:0,additional:0,late:0,tolerance:0,absent:0,automatic:0,fines:0});summaryRows.push([first.workerName,first.workerDni,mins(sum.scheduled),mins(sum.worked),mins(sum.missing),mins(sum.additional),sum.late,sum.tolerance,sum.absent,sum.automatic,`S/. ${(sum.fines/100).toFixed(2)}`]);}
+  const sheets: {name:string;rows:Cell[][]}[]=[{name:"Resumen",rows:[["REPORTE GENERAL DE ASISTENCIA"],[`Periodo: ${period}`],[],["Nombre","DNI","Horas programadas","Horas trabajadas","Horas faltantes","Horas adicionales","Tardanzas","Tolerancias usadas","Faltas","Salidas automáticas","Total multas"],...summaryRows]}]; const used=new Set(["Resumen"]);
+  for(const workerRows of byWorker.values()) { const first=workerRows[0];const sheetRows:Cell[][]=[[first.workerName],[`DNI: ${first.workerDni}`],[`Periodo: ${period}`],[]]; const weeks=new Map<string,typeof rows>();for(const row of [...workerRows].sort((a,b)=>a.date.localeCompare(b.date)||a.shiftType.localeCompare(b.shiftType))){const start=getWeekStartDate(new Date(`${row.date}T12:00:00-05:00`));const values=weeks.get(start)??[];values.push(row);weeks.set(start,values);}for(const [start,weekRows] of weeks){sheetRows.push([`SEMANA: ${start} - ${getWeekEndDate(new Date(`${start}T12:00:00-05:00`))}`],["HORARIO ASIGNADO"],["Fecha","Turno","Horario programado"],...weekRows.map(r=>[r.date,shiftTypeLabels[r.shiftType]??r.shiftType,`${r.scheduledEntryTime?.slice(0,5)??"—"} - ${r.scheduledExitTime?.slice(0,5)??"—"}`]),[],["DETALLE DE ASISTENCIA"],["Fecha","Día","Turno","Horario programado","Entrada","Salida","Tipo de salida","Horas programadas","Horas trabajadas","Diferencia","Tardanza","Estado","Tolerancia","Multa","Observación"],...weekRows.map(r=>[r.date,new Intl.DateTimeFormat("es-PE",{weekday:"long",timeZone:"UTC"}).format(new Date(`${r.date}T12:00:00Z`)),shiftTypeLabels[r.shiftType]??r.shiftType,`${r.scheduledEntryTime?.slice(0,5)??"—"} - ${r.scheduledExitTime?.slice(0,5)??"—"}`,formatTimeOnly(r.serverTime),formatTimeOnly(r.checkOutTime),checkoutSourceLabels[r.checkoutSource]??r.checkoutSource,mins(r.scheduledMinutes),mins(r.workedMinutes),mins(r.additionalMinutes-r.missingMinutes),r.lateMinutes,attendanceStatusLabels[r.status]??r.status,r.toleranceUsed?"Sí":"No",`S/. ${(r.fineAmountCents/100).toFixed(2)}`,r.checkoutMissing?"Salida asignada automáticamente por falta de marcación.":r.scheduleSource==="override"?"Horario especial":""]),["RESUMEN SEMANAL",`Programadas: ${mins(weekRows.reduce((x,r)=>x+r.scheduledMinutes,0))}`,`Trabajadas: ${mins(weekRows.reduce((x,r)=>x+r.workedMinutes,0))}`,`Faltas: ${weekRows.filter(r=>r.status==="absent").length}`,`Multa: S/. ${(weekRows.reduce((x,r)=>x+r.fineAmountCents,0)/100).toFixed(2)}`],[]); } sheets.push({name:uniqueSheetName(first.workerName,used),rows:sheetRows}); }
+  const workbook=createWorkbookBuffer(sheets); return new Response(workbook,{headers:{"content-type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","content-disposition":"attachment; filename=reporte-asistencia.xlsx"}});
 }

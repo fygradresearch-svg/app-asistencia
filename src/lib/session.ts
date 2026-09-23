@@ -1,10 +1,12 @@
 export const ADMIN_SESSION_COOKIE = "admin_session";
+export const WORKER_SESSION_COOKIE = "worker_session";
 
 type AdminSessionPayload = {
   sub: number;
   username: string;
   exp: number;
 };
+type WorkerSessionPayload = { sub: number; dni: string; exp: number };
 
 const encoder = new TextEncoder();
 
@@ -81,4 +83,18 @@ export async function verifyAdminSessionToken(token: string): Promise<AdminSessi
   } catch {
     return null;
   }
+}
+
+export async function createWorkerSessionToken(payload: Omit<WorkerSessionPayload, "exp">) {
+  const body: WorkerSessionPayload = { ...payload, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12 };
+  const encoded = toBase64Url(JSON.stringify(body));
+  return `${encoded}.${await sign(encoded)}`;
+}
+export async function verifyWorkerSessionToken(token: string): Promise<WorkerSessionPayload | null> {
+  const [encoded, signature] = token.split(".");
+  if (!encoded || !signature || (await sign(encoded)) !== signature) return null;
+  try {
+    const payload = JSON.parse(fromBase64Url(encoded)) as WorkerSessionPayload;
+    return payload.sub && payload.dni && payload.exp >= Math.floor(Date.now() / 1000) ? payload : null;
+  } catch { return null; }
 }

@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { workerDaySchedules, workerScheduleOverrides } from "@/db/schema";
+import { workerDaySchedules, workerScheduleOverrides, workerWeeklyScheduleDetails, workerWeeklySchedules } from "@/db/schema";
 import { getCurrentSchedule } from "@/lib/data";
-import { getBusinessDate, getBusinessTime, getBusinessWeekday, minutesFromTime } from "@/lib/dates";
+import { getBusinessDate, getBusinessTime, getBusinessWeekday, getWeekStartDate, minutesFromTime } from "@/lib/dates";
 import { AFTERNOON_CHECKIN_EARLY_MINUTES, DEFAULT_SHIFT_SCHEDULE } from "@/lib/defaults";
 
 export type ShiftName = "morning" | "afternoon";
@@ -13,6 +13,8 @@ export type DayShiftSchedule = {
   afternoonEntryTime: string | null;
   afternoonExitTime: string | null;
   toleranceMinutes: number;
+  source?: "override" | "weekly" | "worker" | "company" | "legacy";
+  isSpecial?: boolean;
 };
 
 type WorkerScheduleSource = {
@@ -108,8 +110,29 @@ export async function getScheduleForWorker(
       morningExitTime: override.morningExitTime,
       afternoonEntryTime: override.afternoonEntryTime,
       afternoonExitTime: override.afternoonExitTime,
-      toleranceMinutes: override.toleranceMinutes
+      toleranceMinutes: override.toleranceMinutes,
+      source: "override",
+      isSpecial: true
     };
+  }
+
+  const weekStart = getWeekStartDate(date);
+  const [weeklySchedule] = await db.select().from(workerWeeklySchedules).where(
+    and(eq(workerWeeklySchedules.workerId, worker.id), eq(workerWeeklySchedules.weekStart, weekStart))
+  ).limit(1);
+  if (weeklySchedule) {
+    const [detail] = await db.select().from(workerWeeklyScheduleDetails).where(
+      and(eq(workerWeeklyScheduleDetails.weeklyScheduleId, weeklySchedule.id), eq(workerWeeklyScheduleDetails.weekday, getBusinessWeekday(date)))
+    ).limit(1);
+    if (detail) return {
+      morningEntryTime: detail.morningEnabled ? detail.morningEntryTime : null,
+      morningExitTime: detail.morningEnabled ? detail.morningExitTime : null,
+      afternoonEntryTime: detail.afternoonEnabled ? detail.afternoonEntryTime : null,
+      afternoonExitTime: detail.afternoonEnabled ? detail.afternoonExitTime : null,
+      toleranceMinutes: 0,
+      source: "weekly"
+    };
+    return { morningEntryTime: null, morningExitTime: null, afternoonEntryTime: null, afternoonExitTime: null, toleranceMinutes: 0, source: "weekly" };
   }
 
   const weekday = getBusinessWeekday(date);
@@ -138,7 +161,8 @@ export async function getScheduleForWorker(
         morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
         afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
         afternoonExitTime: daySchedule.exitTime,
-        toleranceMinutes: 0
+        toleranceMinutes: 0,
+        source: "legacy"
       };
     }
 
@@ -147,7 +171,8 @@ export async function getScheduleForWorker(
       morningExitTime: daySchedule.morningExitTime,
       afternoonEntryTime: daySchedule.afternoonEntryTime,
       afternoonExitTime: daySchedule.afternoonExitTime,
-      toleranceMinutes: daySchedule.toleranceMinutes
+      toleranceMinutes: daySchedule.toleranceMinutes,
+      source: "worker"
     };
   }
 
@@ -161,7 +186,8 @@ export async function getScheduleForWorker(
       morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
       afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
       afternoonExitTime: worker.scheduleExitTime,
-      toleranceMinutes: worker.scheduleToleranceMinutes
+      toleranceMinutes: worker.scheduleToleranceMinutes,
+      source: "worker"
     };
   }
 
@@ -171,6 +197,14 @@ export async function getScheduleForWorker(
     morningExitTime: DEFAULT_SHIFT_SCHEDULE.morningExitTime,
     afternoonEntryTime: DEFAULT_SHIFT_SCHEDULE.afternoonEntryTime,
     afternoonExitTime: schedule?.exitTime ?? DEFAULT_SHIFT_SCHEDULE.afternoonExitTime,
-    toleranceMinutes: schedule?.toleranceMinutes ?? DEFAULT_SHIFT_SCHEDULE.toleranceMinutes
+    toleranceMinutes: schedule?.toleranceMinutes ?? DEFAULT_SHIFT_SCHEDULE.toleranceMinutes,
+    source: "company"
   };
+}
+
+/** Public centralized resolver. Kept as an alias for backwards compatibility. */
+export const getEffectiveSchedule = getScheduleForWorker;
+
+export function getShiftExitTime(schedule: DayShiftSchedule, shift: ShiftName) {
+  return shift === "morning" ? schedule.morningExitTime : schedule.afternoonExitTime;
 }

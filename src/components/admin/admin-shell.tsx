@@ -29,13 +29,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-slate-200 bg-white px-4 py-5 lg:block">
+    <div className="min-h-screen bg-[#f5f6f8]">
+      <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-white/10 bg-[#132338] px-4 py-6 shadow-2xl lg:block">
         <Link href="/admin/dashboard" className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#e8b77f]">
             Sistema GPS
           </span>
-          <strong className="mt-1 block text-lg leading-tight text-slate-950">
+          <strong className="mt-1 block text-xl leading-tight text-white">
             Asistencia
           </strong>
         </Link>
@@ -50,8 +50,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 href={link.href}
                 className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition ${
                   active
-                    ? "bg-emerald-50 text-emerald-800"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                    ? "bg-[#BC681C] text-white shadow-lg shadow-black/10"
+                    : "text-slate-300 hover:bg-white/10 hover:text-white"
                 }`}
               >
                 <Icon className="h-4 w-4" aria-hidden="true" />
@@ -64,7 +64,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           onClick={logout}
-          className="absolute bottom-5 left-4 right-4 flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+          className="absolute bottom-5 left-4 right-4 flex items-center justify-center gap-2 rounded-xl border border-white/15 px-3 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
         >
           <LogOut className="h-4 w-4" aria-hidden="true" />
           Salir
@@ -72,15 +72,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-20 border-b border-[#132338]/10 bg-white/95 px-4 py-3 shadow-sm backdrop-blur lg:hidden">
           <div className="mb-3 flex items-center justify-between">
-            <Link href="/admin/dashboard" className="font-bold text-slate-950">
+            <Link href="/admin/dashboard" className="font-bold text-[#132338]">
               Asistencia GPS
             </Link>
             <button
               type="button"
               onClick={logout}
-              className="rounded-md border border-slate-200 p-2 text-slate-700"
+              className="rounded-xl border border-slate-200 p-2 text-[#132338]"
               aria-label="Cerrar sesion"
               title="Cerrar sesion"
             >
@@ -97,8 +97,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   href={link.href}
                   className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium ${
                     active
-                      ? "bg-emerald-50 text-emerald-800"
-                      : "bg-slate-100 text-slate-700"
+                      ? "bg-[#132338] text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
                 >
                   <Icon className="h-4 w-4" aria-hidden="true" />

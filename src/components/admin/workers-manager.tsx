@@ -762,6 +762,14 @@ export function WorkersManager() {
                         >
                           <Clock className="h-4 w-4" aria-hidden="true" />
                         </button>
+                        <a
+                          href={`/admin/workers/${worker.id}`}
+                          className="rounded-md border border-indigo-200 p-2 text-indigo-700 transition hover:bg-indigo-50"
+                          aria-label="Gestionar horarios semanales"
+                          title="Horarios semanales"
+                        >
+                          <Clock className="h-4 w-4" aria-hidden="true" />
+                        </a>
                         <button
                           type="button"
                           onClick={() => remove(worker)}

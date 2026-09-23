@@ -11,7 +11,7 @@ import { getCurrentLocation } from "@/lib/data";
 import { haversineDistanceMeters } from "@/lib/gps";
 import { evaluateShiftPenalty } from "@/lib/penalties";
 import { getWorkerByDni, isValidDni, normalizeDni } from "@/lib/worker-auth";
-import { hasWeeklyToleranceBeenUsed } from "@/lib/weekly-tolerance";
+import { hasWeeklyToleranceBeenUsed, recalculateWeeklyAttendance } from "@/lib/weekly-tolerance";
 import {
   getScheduleForWorker,
   getShiftEntryTime,
@@ -284,6 +284,8 @@ export async function markAttendance({
       })
       .returning();
 
+    await recalculateWeeklyAttendance(worker.id, now);
+
     return {
       status: 201,
       body: {
@@ -334,6 +336,8 @@ export async function markAttendance({
       checkOutFingerprint: deviceFingerprint || null,
       checkOutIp: ipAddress || null,
       checkOutUserAgent: userAgent || null,
+      checkoutSource: "worker",
+      checkoutMissing: false,
       updatedAt: now
     })
     .where(eq(shiftAttendanceRecords.id, existingShiftRecord.id))
@@ -351,20 +355,14 @@ export async function markAttendance({
   };
 }
 
-export async function verifyWorkerAccess(dni: string, latitude: number, longitude: number) {
+/** Identifies a worker before marking. GPS is deliberately checked only in markAttendance. */
+export async function verifyWorkerAccess(dni: string) {
   const normalizedDni = normalizeDni(dni);
 
   if (!isValidDni(normalizedDni)) {
     return {
       status: 400,
       body: { error: "Ingresa un DNI valido de 8 digitos." }
-    };
-  }
-
-  if (invalidCoordinates(latitude, longitude)) {
-    return {
-      status: 400,
-      body: { error: "Coordenadas invalidas." }
     };
   }
 
@@ -383,32 +381,6 @@ export async function verifyWorkerAccess(dni: string, latitude: number, longitud
     };
   }
 
-  const location = await getCurrentLocation();
-  if (!location) {
-    return {
-      status: 400,
-      body: { error: "No existe una ubicacion autorizada configurada." }
-    };
-  }
-
-  const distanceMeters = haversineDistanceMeters(
-    latitude,
-    longitude,
-    location.latitude,
-    location.longitude
-  );
-  const allowedRadius = Math.min(location.allowedRadiusMeters, MAX_GPS_RADIUS_METERS);
-
-  if (distanceMeters > allowedRadius) {
-    return {
-      status: 403,
-      body: {
-        error: GPS_OUTSIDE_ZONE_MESSAGE,
-        distanceMeters
-      }
-    };
-  }
-
   return {
     status: 200,
     body: {
@@ -419,8 +391,7 @@ export async function verifyWorkerAccess(dni: string, latitude: number, longitud
         dni: worker.dni,
         status: worker.status,
         workerType: worker.workerType
-      },
-      distanceMeters
+      }
     }
   };
 }

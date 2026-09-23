@@ -8,25 +8,25 @@ const cards = [
     key: "registeredWorkers",
     label: "Trabajadores registrados",
     icon: Users,
-    tone: "text-blue-700 bg-blue-50"
+    tone: "text-[#132338] bg-[#132338]/10"
   },
   {
     key: "activeWorkers",
     label: "Trabajadores activos",
     icon: UserCheck,
-    tone: "text-emerald-700 bg-emerald-50"
+    tone: "text-[#BC681C] bg-[#BC681C]/10"
   },
   {
     key: "todayAttendance",
     label: "Asistencias de hoy",
     icon: CalendarCheck,
-    tone: "text-slate-700 bg-slate-100"
+    tone: "text-[#132338] bg-slate-100"
   },
   {
     key: "todayLate",
     label: "Tardanzas de hoy",
     icon: AlarmClock,
-    tone: "text-amber-700 bg-amber-50"
+    tone: "text-[#BC681C] bg-[#BC681C]/10"
   }
 ] as const;
 
@@ -37,9 +37,9 @@ export default async function AdminDashboardPage() {
     <div>
       <div className="mb-6">
         <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
-          Panel administrador
+          Administración
         </p>
-        <h1 className="mt-1 text-3xl font-bold text-slate-950">Dashboard</h1>
+        <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-[#132338]">Dashboard</h1>
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -48,7 +48,7 @@ export default async function AdminDashboardPage() {
           return (
             <article
               key={card.key}
-              className="rounded-md border border-slate-200 bg-white p-5 shadow-sm"
+              className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -57,7 +57,7 @@ export default async function AdminDashboardPage() {
                     {stats[card.key]}
                   </strong>
                 </div>
-                <span className={`rounded-md p-3 ${card.tone}`}>
+                <span className={`rounded-xl p-3 ${card.tone}`}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
               </div>

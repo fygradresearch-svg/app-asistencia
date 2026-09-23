@@ -99,6 +99,8 @@ export async function POST(request: Request) {
       date,
       serverTime: checkInTimeDate,
       checkOutTime: checkOutTimeDate,
+      checkoutSource: checkOutTimeDate ? "admin" : "worker",
+      checkoutMissing: false,
       shiftType,
       distanceMeters: 0,
       latitude: 0,
@@ -154,6 +156,8 @@ export async function PATCH(request: Request) {
     .set({
       serverTime: updatedServerTime,
       checkOutTime: updatedCheckOutTime,
+      checkoutSource: updatedCheckOutTime ? "admin" : record.checkoutSource,
+      checkoutMissing: updatedCheckOutTime ? false : record.checkoutMissing,
       updatedAt: new Date()
     })
     .where(eq(shiftAttendanceRecords.id, id));

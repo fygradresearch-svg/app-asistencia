@@ -6,6 +6,7 @@ import { requireAdminSession } from "@/lib/auth";
 import { isValidDni, normalizeDni } from "@/lib/worker-auth";
 import { jsonError } from "@/lib/http";
 import { normalizeDaySchedules, type DayScheduleInput } from "@/lib/schedule-input";
+import bcrypt from "bcryptjs";
 
 type CreateWorkerBody = {
   fullName?: string;
@@ -15,6 +16,7 @@ type CreateWorkerBody = {
   scheduleExitTime?: string | null;
   scheduleToleranceMinutes?: unknown;
   daySchedules?: DayScheduleInput[];
+  personalCode?: string;
 };
 
 export async function GET() {
@@ -47,6 +49,7 @@ export async function POST(request: Request) {
   const fullName = body?.fullName?.trim();
   const dni = normalizeDni(body?.dni);
   const workerType = body?.workerType === "intern" ? "intern" : "worker";
+  const personalCode = body?.personalCode?.trim() ?? "";
   let daySchedules: ReturnType<typeof normalizeDaySchedules> = [];
 
   try {
@@ -72,6 +75,7 @@ export async function POST(request: Request) {
   if (!isValidDni(dni)) {
     return jsonError("Ingresa un DNI valido de 8 digitos.", 400);
   }
+  if (personalCode && personalCode.length < 4) return jsonError("El código personal debe tener al menos 4 caracteres.", 400);
 
   if (hasCustomSchedule) {
     if (
@@ -97,6 +101,7 @@ export async function POST(request: Request) {
       dni,
       status: "active",
       workerType,
+      personalCodeHash: personalCode ? await bcrypt.hash(personalCode, 10) : null,
       scheduleEntryTime: hasCustomSchedule ? scheduleEntryTime : null,
       scheduleExitTime: hasCustomSchedule ? scheduleExitTime : null,
       scheduleToleranceMinutes: hasCustomSchedule

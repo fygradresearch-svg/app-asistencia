@@ -75,13 +75,21 @@ function TopBar({ workerName, onClear }: { workerName?: string; onClear?: () => 
           <span className="text-white font-semibold text-sm">FyGrad</span>
         </div>
         {workerName && onClear ? (
-            <button
-                type="button"
-                onClick={onClear}
-                className="text-white/40 text-xs font-medium hover:text-white/70 transition"
-            >
-              Cambiar DNI
-            </button>
+            <div className="flex items-center gap-3">
+              <a
+                href="/worker/login?next=/worker/history"
+                className="rounded-lg border border-[#00b4cc]/40 px-2.5 py-2 text-xs font-semibold text-[#6eddeb] transition hover:bg-[#00b4cc]/10"
+              >
+                Ver mi historial
+              </a>
+              <button
+                  type="button"
+                  onClick={onClear}
+                  className="text-white/40 text-xs font-medium hover:text-white/70 transition"
+              >
+                Cambiar DNI
+              </button>
+            </div>
         ) : null}
       </header>
   );
@@ -158,11 +166,10 @@ export default function WorkerPage() {
         setError("");
         setMessage("");
         try {
-          const position = await getCurrentPosition();
           const response = await fetch("/api/worker/verify", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ dni: workerDni, ...position }),
+            body: JSON.stringify({ dni: workerDni }),
           });
           const data = await response.json().catch(() => ({}));
           if (!response.ok) {
@@ -177,7 +184,7 @@ export default function WorkerPage() {
         } catch (caught) {
           setWorker(null);
           setToday(null);
-          setError(caught instanceof Error ? caught.message : "No se pudo obtener tu ubicación GPS.");
+          setError(caught instanceof Error ? caught.message : "No se pudo validar el DNI.");
         } finally {
           setLoading(false);
         }

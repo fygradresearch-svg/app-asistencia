@@ -106,7 +106,7 @@ export async function POST(request: Request) {
 
   // Recalculate attendance records for this date (if any)
   const targetDate = new Date(`${date}T12:00:00-05:00`);
-  await recalculateWeeklyAttendance(workerId, targetDate);
+  await recalculateWeeklyAttendance(workerId, targetDate, true);
 
   return NextResponse.json({ ok: true });
 }
@@ -138,7 +138,7 @@ export async function DELETE(request: Request) {
 
   // Recalculate attendance records to fallback to normal weekly schedule
   const targetDate = new Date(`${date}T12:00:00-05:00`);
-  await recalculateWeeklyAttendance(workerId, targetDate);
+  await recalculateWeeklyAttendance(workerId, targetDate, true);
 
   return NextResponse.json({ ok: true });
 }

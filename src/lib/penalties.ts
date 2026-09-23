@@ -13,9 +13,9 @@ export type ShiftPenalty = {
 export const ABSENCE_PENALTY: ShiftPenalty = {
   status: "absent",
   lateMinutes: 0,
-  fineAmountCents: 2000,
+  fineAmountCents: 4000,
   toleranceUsed: false,
-  penaltyLabel: "Falta - S/. 20.00"
+  penaltyLabel: "Falta - S/. 40.00"
 };
 
 export function evaluateShiftPenalty(
@@ -56,12 +56,20 @@ export function evaluateShiftPenalty(
     };
   }
 
-  return {
+  if (lateMinutes <= 30) return {
     status: "late",
     lateMinutes,
     fineAmountCents: appliesFine ? 2000 : 0,
     toleranceUsed: false,
     penaltyLabel: appliesFine ? "S/. 20.00" : "Sin multa"
+  };
+
+  return {
+    status: "absent",
+    lateMinutes,
+    fineAmountCents: appliesFine ? 4000 : 0,
+    toleranceUsed: false,
+    penaltyLabel: appliesFine ? "Falta - S/. 40.00" : "Sin multa"
   };
 }
 

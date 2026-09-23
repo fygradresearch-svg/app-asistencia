@@ -33,6 +33,8 @@ export const shiftAttendanceStatusEnum = pgEnum("shift_attendance_status", [
 export const gpsStatusEnum = pgEnum("gps_status", ["valid", "outside_zone"]);
 
 export const attemptTypeEnum = pgEnum("attempt_type", ["check_in", "check_out"]);
+export const checkoutSourceEnum = pgEnum("checkout_source", ["worker", "admin", "automatic"]);
+export const scheduleSourceEnum = pgEnum("schedule_source", ["override", "weekly", "worker", "company", "legacy"]);
 
 export const admins = pgTable("admins", {
   id: serial("id").primaryKey(),
@@ -47,12 +49,44 @@ export const workers = pgTable("workers", {
   dni: varchar("dni", { length: 8 }).notNull().unique(),
   status: workerStatusEnum("status").default("active").notNull(),
   workerType: workerTypeEnum("worker_type").default("worker").notNull(),
+  personalCodeHash: text("personal_code_hash"),
   scheduleEntryTime: time("schedule_entry_time"),
   scheduleExitTime: time("schedule_exit_time"),
   scheduleToleranceMinutes: integer("schedule_tolerance_minutes"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+export const workerWeeklySchedules = pgTable(
+  "worker_weekly_schedules",
+  {
+    id: serial("id").primaryKey(),
+    workerId: integer("worker_id").notNull().references(() => workers.id, { onDelete: "cascade" }),
+    weekStart: date("week_start", { mode: "string" }).notNull(),
+    weekEnd: date("week_end", { mode: "string" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({ workerWeekUnique: uniqueIndex("worker_weekly_schedule_unique").on(table.workerId, table.weekStart) })
+);
+
+export const workerWeeklyScheduleDetails = pgTable(
+  "worker_weekly_schedule_details",
+  {
+    id: serial("id").primaryKey(),
+    weeklyScheduleId: integer("weekly_schedule_id").notNull().references(() => workerWeeklySchedules.id, { onDelete: "cascade" }),
+    weekday: integer("weekday").notNull(),
+    morningEnabled: boolean("morning_enabled").default(false).notNull(),
+    morningEntryTime: time("morning_entry_time"),
+    morningExitTime: time("morning_exit_time"),
+    afternoonEnabled: boolean("afternoon_enabled").default(false).notNull(),
+    afternoonEntryTime: time("afternoon_entry_time"),
+    afternoonExitTime: time("afternoon_exit_time"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({ weeklyScheduleWeekdayUnique: uniqueIndex("weekly_schedule_detail_unique").on(table.weeklyScheduleId, table.weekday) })
+);
 
 export const workerDaySchedules = pgTable(
   "worker_day_schedules",
@@ -127,6 +161,15 @@ export const shiftAttendanceRecords = pgTable(
     checkOutFingerprint: text("check_out_fingerprint"),
     checkOutIp: varchar("check_out_ip", { length: 45 }),
     checkOutUserAgent: text("check_out_user_agent"),
+    checkoutSource: checkoutSourceEnum("checkout_source").default("worker").notNull(),
+    checkoutMissing: boolean("checkout_missing").default(false).notNull(),
+    scheduledEntryTime: time("scheduled_entry_time"),
+    scheduledExitTime: time("scheduled_exit_time"),
+    scheduleSource: scheduleSourceEnum("schedule_source"),
+    scheduledMinutes: integer("scheduled_minutes").default(0).notNull(),
+    workedMinutes: integer("worked_minutes").default(0).notNull(),
+    missingMinutes: integer("missing_minutes").default(0).notNull(),
+    additionalMinutes: integer("additional_minutes").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
   },
@@ -192,3 +235,5 @@ export type Worker = typeof workers.$inferSelect;
 export type WorkerDaySchedule = typeof workerDaySchedules.$inferSelect;
 export type ShiftAttendanceRecord = typeof shiftAttendanceRecords.$inferSelect;
 export type WorkerScheduleOverride = typeof workerScheduleOverrides.$inferSelect;
+export type WorkerWeeklySchedule = typeof workerWeeklySchedules.$inferSelect;
+export type WorkerWeeklyScheduleDetail = typeof workerWeeklyScheduleDetails.$inferSelect;

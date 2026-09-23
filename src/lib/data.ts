@@ -14,6 +14,7 @@ import { DEFAULT_LOCATION, DEFAULT_SCHEDULE } from "@/lib/defaults";
 import { getBusinessDate, getBusinessTime } from "@/lib/dates";
 import { formatFineAmount } from "@/lib/penalties";
 import { DayShiftSchedule } from "@/lib/worker-schedules";
+import { calculateScheduledMinutes } from "@/lib/attendance-calculations";
 
 export async function getCurrentLocation() {
   const [location] = await db.select().from(locations).limit(1);
@@ -89,6 +90,14 @@ export type AttendanceReportRow = {
   scheduledEntryTime: string | null;
   serverTime: Date | null;
   checkOutTime: Date | null;
+  scheduledExitTime: string | null;
+  scheduleSource: string | null;
+  checkoutSource: string;
+  checkoutMissing: boolean;
+  scheduledMinutes: number;
+  workedMinutes: number;
+  missingMinutes: number;
+  additionalMinutes: number;
   status: string;
   lateMinutes: number;
   fineAmountCents: number;
@@ -280,9 +289,17 @@ function mapRecordRow(
     workerDni: row.workerDni,
     date: row.date,
     shiftType: row.shiftType,
-    scheduledEntryTime,
+    scheduledEntryTime: row.scheduledEntryTime ?? scheduledEntryTime,
     serverTime: row.serverTime,
     checkOutTime: row.checkOutTime,
+    scheduledExitTime: row.scheduledExitTime,
+    scheduleSource: row.scheduleSource,
+    checkoutSource: row.checkoutSource,
+    checkoutMissing: row.checkoutMissing,
+    scheduledMinutes: row.scheduledMinutes,
+    workedMinutes: row.workedMinutes,
+    missingMinutes: row.missingMinutes,
+    additionalMinutes: row.additionalMinutes,
     status: row.status,
     lateMinutes: row.lateMinutes,
     fineAmountCents: row.fineAmountCents,
@@ -326,6 +343,15 @@ async function getAttendanceRecordRows(filters: AttendanceFilters) {
       shiftType: shiftAttendanceRecords.shiftType,
       serverTime: shiftAttendanceRecords.serverTime,
       checkOutTime: shiftAttendanceRecords.checkOutTime,
+      scheduledEntryTime: shiftAttendanceRecords.scheduledEntryTime,
+      scheduledExitTime: shiftAttendanceRecords.scheduledExitTime,
+      scheduleSource: shiftAttendanceRecords.scheduleSource,
+      checkoutSource: shiftAttendanceRecords.checkoutSource,
+      checkoutMissing: shiftAttendanceRecords.checkoutMissing,
+      scheduledMinutes: shiftAttendanceRecords.scheduledMinutes,
+      workedMinutes: shiftAttendanceRecords.workedMinutes,
+      missingMinutes: shiftAttendanceRecords.missingMinutes,
+      additionalMinutes: shiftAttendanceRecords.additionalMinutes,
       status: shiftAttendanceRecords.status,
       lateMinutes: shiftAttendanceRecords.lateMinutes,
       fineAmountCents: shiftAttendanceRecords.fineAmountCents,
@@ -477,6 +503,8 @@ export async function getAttendanceReportRows(filters: AttendanceFilters) {
 
         const scheduledEntryTime =
           shiftType === "morning" ? schedule.morningEntryTime : schedule.afternoonEntryTime;
+        const scheduledExitTime =
+          shiftType === "morning" ? schedule.morningExitTime : schedule.afternoonExitTime;
 
         if (!shouldMarkAbsent(date, scheduledEntryTime)) {
           continue;
@@ -494,7 +522,15 @@ export async function getAttendanceReportRows(filters: AttendanceFilters) {
           checkOutTime: null,
           status: "absent",
           lateMinutes: 0,
-          fineAmountCents: 0,
+          fineAmountCents: 4000,
+          scheduledExitTime,
+          scheduleSource: schedule.source ?? null,
+          checkoutSource: "automatic",
+          checkoutMissing: false,
+          scheduledMinutes: calculateScheduledMinutes(scheduledEntryTime, scheduledExitTime),
+          workedMinutes: 0,
+          missingMinutes: calculateScheduledMinutes(scheduledEntryTime, scheduledExitTime),
+          additionalMinutes: 0,
           toleranceUsed: false,
           distanceMeters: 0,
           canEdit: false,

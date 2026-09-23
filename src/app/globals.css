@@ -4,6 +4,13 @@
 
 :root {
   color-scheme: light;
+  --brand: #132338;
+  --brand-hover: #1d344e;
+  --accent: #bc681c;
+  --accent-hover: #9f5717;
+  --canvas: #f5f6f8;
+  --surface: #ffffff;
+  --line: #dce1e7;
 }
 
 * {
@@ -13,7 +20,9 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #f8fafc;
+  background: var(--canvas);
+  color: var(--brand);
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 button,
@@ -24,4 +33,39 @@ select {
 
 button:disabled {
   cursor: not-allowed;
+}
+
+@layer utilities {
+  /* Brand compatibility layer: preserves existing components while applying the new system. */
+  .bg-emerald-700 { background-color: var(--brand) !important; }
+  .hover\:bg-emerald-800:hover { background-color: var(--brand-hover) !important; }
+  .text-emerald-700, .text-emerald-800 { color: var(--accent) !important; }
+  .border-emerald-200 { border-color: #e7c39e !important; }
+  .bg-emerald-50 { background-color: #fff8ef !important; }
+  .focus\:border-emerald-500:focus { border-color: var(--accent) !important; }
+  .focus\:ring-emerald-100:focus, .focus\:ring-emerald-500:focus { --tw-ring-color: rgb(188 104 28 / .22) !important; }
+  .bg-amber-50 { background-color: #fff8ef !important; }
+  .text-amber-700, .text-amber-800 { color: var(--accent) !important; }
+  .border-amber-200 { border-color: #e7c39e !important; }
+  .bg-\[\#0f2744\], .bg-\[\#0F2744\] { background-color: var(--brand) !important; }
+  .text-\[\#0f2744\], .text-\[\#0F2744\] { color: var(--brand) !important; }
+  .bg-\[\#00b4cc\] { background-color: var(--accent) !important; }
+  .text-\[\#00b4cc\] { color: var(--accent) !important; }
+  .border-\[\#00b4cc\] { border-color: var(--accent) !important; }
+  .hover\:bg-\[\#007a8a\]:hover, .hover\:bg-\[\#1a3a5c\]:hover { background-color: var(--brand-hover) !important; }
+  .focus\:border-\[\#00b4cc\]:focus { border-color: var(--accent) !important; }
+  .focus\:ring-\[\#00b4cc\]\/20:focus, .focus\:ring-\[\#00b4cc\]\/40:focus, .focus\:ring-\[\#00b4cc\]\/50:focus { --tw-ring-color: rgb(188 104 28 / .25) !important; }
+  .bg-\[\#f07a1a\] { background-color: var(--accent) !important; }
+  .text-\[\#f07a1a\] { color: var(--accent) !important; }
+  .hover\:bg-\[\#f07a1a\]\/20:hover { background-color: rgb(188 104 28 / .18) !important; }
+}
+
+@layer components {
+  input, select, textarea {
+    border-color: var(--line);
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent) !important;
+    outline: 0;
+  }
 }

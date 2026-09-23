@@ -4,6 +4,9 @@ import { shiftAttendanceRecords, workers } from "@/db/schema";
 import { getWeekEndDate, getWeekStartDate } from "@/lib/dates";
 import { getScheduleForWorker, getShiftEntryTime } from "@/lib/worker-schedules";
 import { evaluateShiftPenalty } from "@/lib/penalties";
+import { getShiftExitTime } from "@/lib/worker-schedules";
+import { calculateHourTotals, calculateScheduledMinutes, calculateWorkedMinutes } from "@/lib/attendance-calculations";
+import { getBusinessDate, parseDateTimeInZone } from "@/lib/dates";
 
 export async function hasWeeklyToleranceBeenUsed(
   workerId: number,
@@ -30,18 +33,19 @@ export async function hasWeeklyToleranceBeenUsed(
 
 export async function recalculateWeeklyAttendance(
   workerId: number,
-  date: Date
+  date: Date,
+  forceScheduleSnapshot = false
 ) {
   const weekStart = getWeekStartDate(date);
   const weekEnd = getWeekEndDate(date);
-  await recalculateAttendanceRange(workerId, weekStart, weekEnd);
+  await recalculateAttendanceRange(workerId, weekStart, weekEnd, forceScheduleSnapshot);
 }
 
 export async function recalculateAllAttendanceForWorker(workerId: number) {
   await recalculateAttendanceRange(workerId);
 }
 
-async function recalculateAttendanceRange(workerId: number, from?: string, to?: string) {
+async function recalculateAttendanceRange(workerId: number, from?: string, to?: string, forceScheduleSnapshot = false) {
   const conditions = [eq(shiftAttendanceRecords.workerId, workerId)];
 
   if (from) {
@@ -82,7 +86,11 @@ async function recalculateAttendanceRange(workerId: number, from?: string, to?: 
 
     if (!schedule) continue;
 
-    const entryTime = getShiftEntryTime(schedule, record.shiftType);
+    const resolvedEntryTime = getShiftEntryTime(schedule, record.shiftType);
+    const resolvedExitTime = getShiftExitTime(schedule, record.shiftType);
+    const useSnapshot = !forceScheduleSnapshot && record.date >= "2026-09-01" && Boolean(record.scheduledEntryTime);
+    const entryTime = useSnapshot ? record.scheduledEntryTime : resolvedEntryTime;
+    const exitTime = useSnapshot ? record.scheduledExitTime : resolvedExitTime;
     if (!entryTime) continue;
 
     const penalty = evaluateShiftPenalty(
@@ -96,6 +104,19 @@ async function recalculateAttendanceRange(workerId: number, from?: string, to?: 
       toleranceUsedInWeek = true;
     }
 
+    let checkOutTime = record.checkOutTime;
+    let checkoutSource = record.checkoutSource;
+    let checkoutMissing = record.checkoutMissing;
+    // A past shift with an entry and no exit receives an auditable calculated exit.
+    if (!checkOutTime && exitTime && record.date < getBusinessDate()) {
+      checkOutTime = parseDateTimeInZone(record.date, exitTime.slice(0, 5));
+      checkoutSource = "automatic";
+      checkoutMissing = true;
+    }
+    const scheduledMinutes = calculateScheduledMinutes(entryTime, exitTime);
+    const workedMinutes = calculateWorkedMinutes(record.serverTime, checkOutTime);
+    const hourTotals = calculateHourTotals(scheduledMinutes, workedMinutes);
+
     await db
       .update(shiftAttendanceRecords)
       .set({
@@ -103,6 +124,16 @@ async function recalculateAttendanceRange(workerId: number, from?: string, to?: 
         lateMinutes: penalty.lateMinutes,
         fineAmountCents: penalty.fineAmountCents,
         toleranceUsed: penalty.toleranceUsed,
+        checkOutTime,
+        checkoutSource,
+        checkoutMissing,
+        scheduledEntryTime: entryTime,
+        scheduledExitTime: exitTime,
+        scheduleSource: useSnapshot ? record.scheduleSource : (schedule.source ?? "legacy"),
+        scheduledMinutes,
+        workedMinutes,
+        missingMinutes: hourTotals.missingMinutes,
+        additionalMinutes: hourTotals.additionalMinutes,
         updatedAt: new Date()
       })
       .where(eq(shiftAttendanceRecords.id, record.id));
