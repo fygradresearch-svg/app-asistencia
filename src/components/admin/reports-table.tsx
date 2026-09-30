@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Download, Filter, RefreshCw, Edit2, X, Clock, CheckCircle2, AlertCircle, Info, Trash2 } from "lucide-react";
+import { Download, Filter, RefreshCw, Edit2, X, Clock, CheckCircle2, AlertCircle, Info } from "lucide-react";
 import { attendanceStatusLabels, shiftTypeLabels } from "@/lib/labels";
 
 type WorkerOption = {
@@ -48,14 +48,6 @@ type Filters = {
   workerId: string;
 };
 
-type OverrideForm = {
-  morningEntryTime: string;
-  morningExitTime: string;
-  afternoonEntryTime: string;
-  afternoonExitTime: string;
-  toleranceMinutes: number;
-};
-
 function formatTime(value: string | null) {
   if (!value) {
     return "-";
@@ -95,19 +87,10 @@ export function ReportsTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Edit and Override modal state
+  // Attendance edit modal state
   const [selectedRow, setSelectedRow] = useState<ReportRow | null>(null);
-  const [modalTab, setModalTab] = useState<"attendance" | "schedule">("attendance");
   const [editCheckIn, setEditCheckIn] = useState("");
   const [editCheckOut, setEditCheckOut] = useState("");
-  const [overrideForm, setOverrideForm] = useState<OverrideForm>({
-    morningEntryTime: "",
-    morningExitTime: "",
-    afternoonEntryTime: "",
-    afternoonExitTime: "",
-    toleranceMinutes: 0
-  });
-  const [hasOverride, setHasOverride] = useState(false);
   const [modalSaving, setModalSaving] = useState(false);
   const [modalError, setModalError] = useState("");
   const [modalSuccess, setModalSuccess] = useState("");
@@ -233,40 +216,10 @@ export function ReportsTable() {
     }
 
     setSelectedRow(row);
-    setModalTab("attendance");
     setEditCheckIn(formatTimeOnlyString(row.serverTime));
     setEditCheckOut(formatTimeOnlyString(row.checkOutTime));
     setModalError("");
     setModalSuccess("");
-    setHasOverride(false);
-
-    // Fetch daily override
-    try {
-      const res = await fetch(`/api/admin/schedule/overrides?workerId=${row.workerId}&date=${row.date}`);
-      if (res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data) {
-          setOverrideForm({
-            morningEntryTime: data.morningEntryTime ?? "",
-            morningExitTime: data.morningExitTime ?? "",
-            afternoonEntryTime: data.afternoonEntryTime ?? "",
-            afternoonExitTime: data.afternoonExitTime ?? "",
-            toleranceMinutes: data.toleranceMinutes ?? 0
-          });
-          setHasOverride(true);
-        } else {
-          setOverrideForm({
-            morningEntryTime: "",
-            morningExitTime: "",
-            afternoonEntryTime: "",
-            afternoonExitTime: "",
-            toleranceMinutes: 0
-          });
-        }
-      }
-    } catch {
-      // Keep empty form
-    }
   }
 
   function closeEditModal() {
@@ -294,74 +247,6 @@ export function ReportsTable() {
         setModalError(data.error ?? "No se pudo actualizar la asistencia.");
       } else {
         setModalSuccess("Asistencia actualizada y reglas de negocio recalculadas.");
-        void loadRows();
-      }
-    } catch {
-      setModalError("Error al conectar con el servidor.");
-    } finally {
-      setModalSaving(false);
-    }
-  }
-
-  async function handleSaveOverride() {
-    if (!selectedRow) return;
-    setModalSaving(true);
-    setModalError("");
-    setModalSuccess("");
-
-    try {
-      const response = await fetch("/api/admin/schedule/overrides", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          workerId: selectedRow.workerId,
-          date: selectedRow.date,
-          morningEntryTime: overrideForm.morningEntryTime || null,
-          morningExitTime: overrideForm.morningExitTime || null,
-          afternoonEntryTime: overrideForm.afternoonEntryTime || null,
-          afternoonExitTime: overrideForm.afternoonExitTime || null,
-          toleranceMinutes: Number(overrideForm.toleranceMinutes)
-        })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setModalError(data.error ?? "No se pudo actualizar el horario.");
-      } else {
-        setModalSuccess("Horario especial asignado y asistencia recalculada.");
-        setHasOverride(true);
-        void loadRows();
-      }
-    } catch {
-      setModalError("Error al conectar con el servidor.");
-    } finally {
-      setModalSaving(false);
-    }
-  }
-
-  async function handleDeleteOverride() {
-    if (!selectedRow) return;
-    setModalSaving(true);
-    setModalError("");
-    setModalSuccess("");
-
-    try {
-      const response = await fetch(
-        `/api/admin/schedule/overrides?workerId=${selectedRow.workerId}&date=${selectedRow.date}`,
-        { method: "DELETE" }
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setModalError(data.error ?? "No se pudo eliminar el horario especial.");
-      } else {
-        setModalSuccess("Horario especial eliminado. Se reestableció el horario base.");
-        setOverrideForm({
-          morningEntryTime: "",
-          morningExitTime: "",
-          afternoonEntryTime: "",
-          afternoonExitTime: "",
-          toleranceMinutes: 0
-        });
-        setHasOverride(false);
         void loadRows();
       }
     } catch {
@@ -402,7 +287,7 @@ export function ReportsTable() {
             Reporte de Asistencia
           </h1>
           <p className="mt-1.5 text-sm text-slate-500">
-            Administra el control de ingreso/salida, penalidades y ajusta horarios excepcionales.
+            Administra el control de ingreso/salida y las penalidades según el horario semanal asignado.
           </p>
         </div>
         <div className="flex flex-wrap gap-2.5">
@@ -707,32 +592,6 @@ export function ReportsTable() {
               </button>
             </div>
 
-            {/* Tabs Selector */}
-            <div className="mt-6 flex border-b border-slate-100">
-              <button
-                type="button"
-                onClick={() => setModalTab("attendance")}
-                className={`pb-3 text-sm font-semibold border-b-2 px-1 transition ${
-                  modalTab === "attendance"
-                    ? "border-emerald-600 text-emerald-700"
-                    : "border-transparent text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                Asistencia Marcada
-              </button>
-              <button
-                type="button"
-                onClick={() => setModalTab("schedule")}
-                className={`ml-6 pb-3 text-sm font-semibold border-b-2 px-1 transition ${
-                  modalTab === "schedule"
-                    ? "border-emerald-600 text-emerald-700"
-                    : "border-transparent text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                Horario Especial del Día
-              </button>
-            </div>
-
             {/* Modal Content */}
             <div className="mt-6">
               {modalError && (
@@ -748,9 +607,7 @@ export function ReportsTable() {
                 </div>
               )}
 
-              {/* Tab 1: Edit Attendance */}
-              {modalTab === "attendance" && (
-                <div className="space-y-4">
+              <div className="space-y-4">
                   <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-3 flex gap-3 text-slate-600 text-xs">
                     <Clock className="h-4.5 w-4.5 text-emerald-600 shrink-0" />
                     <div>
@@ -821,111 +678,7 @@ export function ReportsTable() {
                       {modalSaving ? "Guardando..." : "Guardar Cambios"}
                     </button>
                   </div>
-                </div>
-              )}
-
-              {/* Tab 2: Daily overrides */}
-              {modalTab === "schedule" && (
-                <div className="space-y-4">
-                  <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-3 flex gap-3 text-slate-600 text-xs">
-                    <Info className="h-4.5 w-4.5 text-blue-600 shrink-0" />
-                    <div>
-                      Configura un horario especial aplicable **exclusivamente a esta fecha** para este trabajador. Esto anula las reglas regulares semanales/globales por hoy.
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <label className="block">
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Entrada Mañana</span>
-                      <input
-                        type="time"
-                        value={overrideForm.morningEntryTime}
-                        onChange={(e) => setOverrideForm(prev => ({ ...prev, morningEntryTime: e.target.value }))}
-                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-100/50"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Salida Mañana</span>
-                      <input
-                        type="time"
-                        value={overrideForm.morningExitTime}
-                        onChange={(e) => setOverrideForm(prev => ({ ...prev, morningExitTime: e.target.value }))}
-                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-100/50"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Entrada Tarde</span>
-                      <input
-                        type="time"
-                        value={overrideForm.afternoonEntryTime}
-                        onChange={(e) => setOverrideForm(prev => ({ ...prev, afternoonEntryTime: e.target.value }))}
-                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-100/50"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Salida Tarde</span>
-                      <input
-                        type="time"
-                        value={overrideForm.afternoonExitTime}
-                        onChange={(e) => setOverrideForm(prev => ({ ...prev, afternoonExitTime: e.target.value }))}
-                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-100/50"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 items-end">
-                    <label className="block">
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tolerancia (Minutos)</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={overrideForm.toleranceMinutes}
-                        onChange={(e) => setOverrideForm(prev => ({ ...prev, toleranceMinutes: Number(e.target.value) }))}
-                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-100/50"
-                      />
-                    </label>
-
-                    {hasOverride && (
-                      <button
-                        type="button"
-                        onClick={handleDeleteOverride}
-                        disabled={modalSaving}
-                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700 hover:bg-red-100 transition active:scale-[0.98]"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Eliminar Horario Especial
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
-                    <button
-                      type="button"
-                      onClick={closeEditModal}
-                      className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 active:scale-[0.98]"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveOverride}
-                      disabled={
-                        modalSaving ||
-                        (!overrideForm.morningEntryTime &&
-                          !overrideForm.morningExitTime &&
-                          !overrideForm.afternoonEntryTime &&
-                          !overrideForm.afternoonExitTime)
-                      }
-                      className="rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-emerald-800 disabled:opacity-50 active:scale-[0.98]"
-                    >
-                      {modalSaving ? "Guardando..." : "Guardar Horario Especial"}
-                    </button>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </div>

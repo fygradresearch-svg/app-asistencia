@@ -536,11 +536,6 @@ export function WorkersManager() {
     await loadWorkers();
   }
 
-  function openScheduleModal(worker: WorkerRow) {
-    setEditingWorker(worker);
-    setScheduleForm(scheduleFormFromWorker(worker));
-  }
-
   async function saveWorkerSchedule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editingWorker) {
@@ -753,15 +748,6 @@ export function WorkersManager() {
                             <UserX className="h-4 w-4" aria-hidden="true" />
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => openScheduleModal(worker)}
-                          className="rounded-md border border-amber-200 p-2 text-amber-700 transition hover:bg-amber-50"
-                          aria-label="Editar horario"
-                          title="Editar horario"
-                        >
-                          <Clock className="h-4 w-4" aria-hidden="true" />
-                        </button>
                         <a
                           href={`/admin/workers/${worker.id}`}
                           className="rounded-md border border-indigo-200 p-2 text-indigo-700 transition hover:bg-indigo-50"

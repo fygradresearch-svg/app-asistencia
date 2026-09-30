@@ -3,12 +3,10 @@ import { db } from "@/db";
 import {
   locations,
   shiftAttendanceRecords,
-  workerDaySchedules,
-  workerScheduleOverrides,
+  workerWeeklyScheduleDetails,
+  workerWeeklySchedules,
   workers,
-  workSchedules,
-  type WorkerDaySchedule,
-  type WorkerScheduleOverride
+  workSchedules
 } from "@/db/schema";
 import { DEFAULT_LOCATION, DEFAULT_SCHEDULE } from "@/lib/defaults";
 import { getBusinessDate, getBusinessTime } from "@/lib/dates";
@@ -126,9 +124,18 @@ type WorkerReportSource = {
   fullName: string;
   dni: string;
   status: "pending" | "active" | "inactive";
-  scheduleEntryTime: string | null;
-  scheduleExitTime: string | null;
-  scheduleToleranceMinutes: number | null;
+};
+
+type WeeklyScheduleDetail = {
+  workerId: number;
+  weekStart: string;
+  weekday: number;
+  morningEnabled: boolean;
+  morningEntryTime: string | null;
+  morningExitTime: string | null;
+  afternoonEnabled: boolean;
+  afternoonEntryTime: string | null;
+  afternoonExitTime: string | null;
 };
 
 function parseDateParts(value: string) {
@@ -140,6 +147,13 @@ function getWeekdayFromDateString(value: string) {
   const { year, month, day } = parseDateParts(value);
   const utcDay = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
   return utcDay === 0 ? 7 : utcDay;
+}
+
+function getWeekStartFromDateString(value: string) {
+  const { year, month, day } = parseDateParts(value);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() - (getWeekdayFromDateString(value) - 1));
+  return date.toISOString().slice(0, 10);
 }
 
 function enumerateDates(start: string, end: string) {
@@ -185,80 +199,29 @@ function sortAttendanceRows(rows: AttendanceReportRow[]) {
   });
 }
 
-function buildFallbackSchedule(
-  worker: WorkerReportSource,
-  globalSchedule: Awaited<ReturnType<typeof getCurrentSchedule>>
-): DayShiftSchedule {
-  return {
-    morningEntryTime: worker.scheduleEntryTime ?? globalSchedule?.entryTime ?? "08:00",
-    morningExitTime: "13:00",
-    afternoonEntryTime: "14:30",
-    afternoonExitTime: worker.scheduleExitTime ?? globalSchedule?.exitTime ?? "19:00",
-    toleranceMinutes:
-      worker.scheduleToleranceMinutes ?? globalSchedule?.toleranceMinutes ?? 0
-  };
-}
-
 function resolveScheduleForDate({
   worker,
   date,
-  globalSchedule,
-  daySchedulesByWorker,
-  overridesByWorkerDate
+  weeklySchedulesByWorkerDate
 }: {
   worker: WorkerReportSource;
   date: string;
-  globalSchedule: Awaited<ReturnType<typeof getCurrentSchedule>>;
-  daySchedulesByWorker: Map<number, Map<number, WorkerDaySchedule>>;
-  overridesByWorkerDate: Map<string, WorkerScheduleOverride>;
+  weeklySchedulesByWorkerDate: Map<string, WeeklyScheduleDetail>;
 }) {
-  const override = overridesByWorkerDate.get(`${worker.id}:${date}`);
-  if (override) {
-    return {
-      morningEntryTime: override.morningEntryTime,
-      morningExitTime: override.morningExitTime,
-      afternoonEntryTime: override.afternoonEntryTime,
-      afternoonExitTime: override.afternoonExitTime,
-      toleranceMinutes: override.toleranceMinutes
-    } satisfies DayShiftSchedule;
-  }
+  const detail = weeklySchedulesByWorkerDate.get(
+    `${worker.id}:${getWeekStartFromDateString(date)}:${getWeekdayFromDateString(date)}`
+  );
 
-  const workerDayMap = daySchedulesByWorker.get(worker.id);
-  if (workerDayMap?.size) {
-    const weekday = getWeekdayFromDateString(date);
-    const daySchedule = workerDayMap.get(weekday);
+  if (!detail) return null;
 
-    if (!daySchedule) {
-      return null;
-    }
-
-    const hasStoredShiftFields = Boolean(
-      daySchedule.morningEntryTime ||
-        daySchedule.morningExitTime ||
-        daySchedule.afternoonEntryTime ||
-        daySchedule.afternoonExitTime
-    );
-
-    if (!hasStoredShiftFields) {
-      return {
-        morningEntryTime: daySchedule.entryTime,
-        morningExitTime: "13:00",
-        afternoonEntryTime: "14:30",
-        afternoonExitTime: daySchedule.exitTime,
-        toleranceMinutes: daySchedule.toleranceMinutes
-      } satisfies DayShiftSchedule;
-    }
-
-    return {
-      morningEntryTime: daySchedule.morningEntryTime,
-      morningExitTime: daySchedule.morningExitTime,
-      afternoonEntryTime: daySchedule.afternoonEntryTime,
-      afternoonExitTime: daySchedule.afternoonExitTime,
-      toleranceMinutes: daySchedule.toleranceMinutes
-    } satisfies DayShiftSchedule;
-  }
-
-  return buildFallbackSchedule(worker, globalSchedule);
+  return {
+    morningEntryTime: detail.morningEnabled ? detail.morningEntryTime : null,
+    morningExitTime: detail.morningEnabled ? detail.morningExitTime : null,
+    afternoonEntryTime: detail.afternoonEnabled ? detail.afternoonEntryTime : null,
+    afternoonExitTime: detail.afternoonEnabled ? detail.afternoonExitTime : null,
+    toleranceMinutes: 0,
+    source: "weekly"
+  } satisfies DayShiftSchedule;
 }
 
 function shouldMarkAbsent(date: string, scheduledEntryTime: string | null) {
@@ -391,26 +354,20 @@ export async function getAttendanceReportRows(filters: AttendanceFilters) {
     return sortAttendanceRows(recordRows.map((row) => mapRecordRow(row, null)));
   }
 
-  const [globalSchedule, activeWorkers] = await Promise.all([
-    getCurrentSchedule(),
-    db
-      .select({
-        id: workers.id,
-        fullName: workers.fullName,
-        dni: workers.dni,
-        status: workers.status,
-        scheduleEntryTime: workers.scheduleEntryTime,
-        scheduleExitTime: workers.scheduleExitTime,
-        scheduleToleranceMinutes: workers.scheduleToleranceMinutes
-      })
-      .from(workers)
-      .where(
-        and(
-          eq(workers.status, "active"),
-          ...(filters.workerId ? [eq(workers.id, filters.workerId)] : [])
-        )
+  const activeWorkers = await db
+    .select({
+      id: workers.id,
+      fullName: workers.fullName,
+      dni: workers.dni,
+      status: workers.status
+    })
+    .from(workers)
+    .where(
+      and(
+        eq(workers.status, "active"),
+        ...(filters.workerId ? [eq(workers.id, filters.workerId)] : [])
       )
-  ]);
+    );
 
   if (activeWorkers.length === 0) {
     return sortAttendanceRows(recordRows.map((row) => mapRecordRow(row, null)));
@@ -419,33 +376,37 @@ export async function getAttendanceReportRows(filters: AttendanceFilters) {
   const workerIds = activeWorkers.map((worker) => worker.id);
   const dates = enumerateDates(rangeStart, rangeEnd);
 
-  const [daySchedules, overrides] = await Promise.all([
-    db
-      .select()
-      .from(workerDaySchedules)
-      .where(inArray(workerDaySchedules.workerId, workerIds)),
-    db
-      .select()
-      .from(workerScheduleOverrides)
-      .where(
-        and(
-          inArray(workerScheduleOverrides.workerId, workerIds),
-          gte(workerScheduleOverrides.date, rangeStart),
-          lte(workerScheduleOverrides.date, rangeEnd)
-        )
+  const weeklyDetails = await db
+    .select({
+      workerId: workerWeeklySchedules.workerId,
+      weekStart: workerWeeklySchedules.weekStart,
+      weekday: workerWeeklyScheduleDetails.weekday,
+      morningEnabled: workerWeeklyScheduleDetails.morningEnabled,
+      morningEntryTime: workerWeeklyScheduleDetails.morningEntryTime,
+      morningExitTime: workerWeeklyScheduleDetails.morningExitTime,
+      afternoonEnabled: workerWeeklyScheduleDetails.afternoonEnabled,
+      afternoonEntryTime: workerWeeklyScheduleDetails.afternoonEntryTime,
+      afternoonExitTime: workerWeeklyScheduleDetails.afternoonExitTime
+    })
+    .from(workerWeeklySchedules)
+    .innerJoin(
+      workerWeeklyScheduleDetails,
+      eq(workerWeeklyScheduleDetails.weeklyScheduleId, workerWeeklySchedules.id)
+    )
+    .where(
+      and(
+        inArray(workerWeeklySchedules.workerId, workerIds),
+        lte(workerWeeklySchedules.weekStart, rangeEnd),
+        gte(workerWeeklySchedules.weekEnd, rangeStart)
       )
-  ]);
+    );
 
-  const daySchedulesByWorker = new Map<number, Map<number, WorkerDaySchedule>>();
-  for (const daySchedule of daySchedules) {
-    const workerMap = daySchedulesByWorker.get(daySchedule.workerId) ?? new Map();
-    workerMap.set(daySchedule.weekday, daySchedule);
-    daySchedulesByWorker.set(daySchedule.workerId, workerMap);
-  }
-
-  const overridesByWorkerDate = new Map<string, WorkerScheduleOverride>();
-  for (const override of overrides) {
-    overridesByWorkerDate.set(`${override.workerId}:${override.date}`, override);
+  const weeklySchedulesByWorkerDate = new Map<string, WeeklyScheduleDetail>();
+  for (const detail of weeklyDetails) {
+    weeklySchedulesByWorkerDate.set(
+      `${detail.workerId}:${detail.weekStart}:${detail.weekday}`,
+      detail
+    );
   }
 
   const rowsByKey = new Map<string, AttendanceReportRow>();
@@ -456,16 +417,22 @@ export async function getAttendanceReportRows(filters: AttendanceFilters) {
       ? resolveScheduleForDate({
           worker,
           date: row.date,
-          globalSchedule,
-          daySchedulesByWorker,
-          overridesByWorkerDate
+          weeklySchedulesByWorkerDate
         })
       : null;
     const scheduledEntryTime =
       row.shiftType === "morning" ? schedule?.morningEntryTime ?? null : schedule?.afternoonEntryTime ?? null;
+    const scheduledExitTime =
+      row.shiftType === "morning" ? schedule?.morningExitTime ?? null : schedule?.afternoonExitTime ?? null;
+    const reportRow = mapRecordRow(row, scheduledEntryTime);
+    // Para los reportes filtrados, el horario visible siempre proviene de la
+    // planificación semanal vigente; no de una edición individual anterior.
+    reportRow.scheduledExitTime = scheduledExitTime;
+    reportRow.scheduleSource = schedule ? "weekly" : null;
+    reportRow.scheduledMinutes = calculateScheduledMinutes(scheduledEntryTime, scheduledExitTime);
     rowsByKey.set(
       `${row.workerId}:${row.date}:${row.shiftType}`,
-      mapRecordRow(row, scheduledEntryTime)
+      reportRow
     );
   }
 
@@ -478,9 +445,7 @@ export async function getAttendanceReportRows(filters: AttendanceFilters) {
       const schedule = resolveScheduleForDate({
         worker,
         date,
-        globalSchedule,
-        daySchedulesByWorker,
-        overridesByWorkerDate
+        weeklySchedulesByWorkerDate
       });
 
       if (!schedule) {
